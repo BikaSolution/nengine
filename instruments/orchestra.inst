@@ -1,0 +1,447 @@
+# nengine instruments: an orchestra, out of five oscillators
+#
+# A violin and a trumpet can both be a sawtooth and still not sound alike,
+# because what makes an instrument is everything AROUND the wave: how fast it
+# speaks, whether it wavers and how late, what second oscillator sits under
+# it, how dark the filter is. That is what these blocks are.
+#
+# Ranges are sounding pitch. The music editor shades the rows an instrument
+# can't reach, so a cello part can't quietly end up above the staff.
+
+# --- Strings: saw waves, a quick bow, vibrato arriving late ---
+
+instrument violin
+name "Violin"
+family strings
+range G3 G7
+wave saw
+layer none
+envelope 0.03 0.1 0.85 0.08
+vibrato 5.8 0.14 0.18
+sweep 0 0
+breath 0.02
+tone 0.55
+gain 0.55
+color 236 112 84
+vel_tone 1
+end
+
+instrument viola
+based_on violin
+name "Viola"
+range C3 E6
+envelope 0.04 0.1 0.85 0.1
+vibrato 5.5 0.13 0.2
+tone 0.42
+color 232 146 70
+end
+
+instrument cello
+based_on violin
+name "Cello"
+range C2 A5
+envelope 0.05 0.12 0.85 0.12
+vibrato 5.2 0.12 0.22
+tone 0.32
+gain 0.6
+color 200 70 130
+end
+
+instrument contrabass
+name "Contrabass"
+family strings
+range E1 G4
+wave pulse 0.5
+layer saw 0.4 0
+envelope 0.05 0.15 0.8 0.12
+vibrato 4.8 0.08 0.3
+sweep 0 0
+breath 0
+tone 0.22
+gain 0.7
+color 176 70 58
+vel_tone 0.8
+end
+
+instrument harp
+name "Harp"
+family strings
+range C1 G7
+wave string
+layer none
+envelope 0.002 2.6 0 0.4
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 1
+gain 0.85
+color 246 190 120
+end
+
+# --- Woodwinds: triangles and narrow pulses, with breath in them ---
+
+instrument flute_orch
+name "Orchestral Flute"
+family woodwinds
+range C4 C7
+wave triangle
+layer none
+envelope 0.05 0.15 0.9 0.1
+vibrato 5 0.08 0.25
+sweep 0 0
+breath 0.05
+tone 0.85
+gain 0.55
+color 160 230 220
+end
+
+instrument piccolo
+based_on flute_orch
+name "Piccolo"
+range D5 C8
+envelope 0.03 0.1 0.9 0.07
+vibrato 0 0 0
+breath 0.06
+gain 0.4
+color 200 240 230
+end
+
+# The fife-and-drum sound: no vibrato at all, and a pulse over the triangle.
+instrument fife
+name "Fife"
+family woodwinds
+range D5 D7
+wave pulse 0.25
+layer triangle 0.35 0
+envelope 0.012 0.08 0.9 0.05
+vibrato 0 0 0
+sweep 0 0
+breath 0.05
+tone 0.9
+gain 0.45
+color 220 220 150
+end
+
+# A real clarinet's harmonics are the odd ones, and so are a 50% pulse's.
+instrument clarinet
+name "Clarinet"
+family woodwinds
+range D3 Bb6
+wave pulse 0.5
+layer none
+envelope 0.04 0.12 0.88 0.08
+vibrato 4.5 0.04 0.3
+sweep 0 0
+breath 0.015
+tone 0.5
+gain 0.55
+color 140 160 220
+end
+
+instrument oboe
+name "Oboe"
+family woodwinds
+range Bb3 G6
+wave pulse 0.125
+layer none
+envelope 0.03 0.1 0.88 0.07
+vibrato 5.5 0.1 0.2
+sweep 0 0
+breath 0.02
+tone 0.6
+gain 0.45
+color 180 200 120
+end
+
+instrument bassoon
+name "Bassoon"
+family woodwinds
+range Bb1 Eb5
+wave pulse 0.25
+layer none
+envelope 0.04 0.12 0.85 0.1
+vibrato 4.6 0.07 0.28
+sweep 0 0
+breath 0.015
+tone 0.3
+gain 0.6
+color 150 130 90
+end
+
+# --- Brass: the horn swells in, the trumpet doesn't ---
+
+instrument horn
+name "French Horn"
+family brass
+range Bb1 F5
+wave pulse 0.5
+layer triangle 0.35 0
+envelope 0.09 0.2 0.85 0.14
+vibrato 4.5 0.05 0.35
+sweep 0 0
+breath 0
+tone 0.38
+gain 0.6
+color 210 160 70
+# a horn played louder is a brighter horn, not just a louder one
+vel_tone 1.5
+end
+
+instrument trumpet
+name "Trumpet"
+family brass
+range E3 C6
+wave pulse 0.25
+layer none
+envelope 0.02 0.08 0.88 0.07
+vibrato 5.5 0.06 0.25
+sweep 0 0
+breath 0
+tone 0.72
+gain 0.5
+color 250 200 90
+vel_tone 1
+end
+
+instrument trombone
+name "Trombone"
+family brass
+range E2 C5
+wave saw
+layer none
+envelope 0.045 0.12 0.86 0.1
+vibrato 4.8 0.06 0.3
+sweep -0.4 0.04
+breath 0
+tone 0.42
+gain 0.6
+color 200 150 60
+vel_tone 1.2
+end
+
+instrument tuba
+based_on trombone
+name "Tuba"
+range D1 F4
+wave pulse 0.5
+sweep 0 0
+tone 0.2
+gain 0.75
+color 160 120 50
+vel_tone 0.8
+end
+
+# --- Keyboards ---
+
+instrument harpsichord
+name "Harpsichord"
+family keyboards
+range F1 F6
+wave pulse 0.125
+layer none
+envelope 0.001 1 0 0.1
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 0.9
+gain 0.55
+color 220 200 160
+end
+
+instrument celesta
+name "Celesta"
+family keyboards
+range C4 C8
+wave sine
+layer sine 0.35 12
+envelope 0.002 1.5 0 0.2
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 1
+gain 0.6
+color 230 240 255
+# the octave overtone dies long before the note does, as on a real one
+layer_envelope 0.002 0.6 0 0.2
+end
+
+# No envelope worth the name: an organ is on, or it is off.
+instrument pipe_organ
+name "Pipe Organ"
+family keyboards
+range C1 C7
+wave pulse 0.5
+layer pulse 0.4 12
+envelope 0.015 0.02 1 0.04
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 0.7
+gain 0.5
+color 200 160 240
+end
+
+# --- Percussion. Pitch still matters: the row picks how big the drum is ---
+
+instrument timpani
+name "Timpani"
+family percussion
+range D2 A3
+wave triangle
+layer noise 0.2 0
+envelope 0.002 0.9 0 0.1
+vibrato 0 0 0
+sweep 5 0.04
+breath 0
+tone 0.35
+gain 0.9
+color 170 110 70
+end
+
+instrument bass_drum
+name "Bass Drum"
+family percussion
+range C1 C3
+wave triangle
+layer noise 0.15 0
+envelope 0.001 0.35 0 0.05
+vibrato 0 0 0
+sweep 14 0.03
+breath 0
+tone 0.25
+gain 1
+color 130 100 90
+end
+
+instrument snare
+name "Snare Drum"
+family percussion
+range C3 C6
+wave noise
+layer none
+envelope 0.001 0.16 0 0.03
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 0.8
+gain 0.75
+color 200 200 200
+end
+
+# The colonial rope drum: darker and longer than a snare, with a low body.
+instrument field_drum
+name "Field Drum"
+family percussion
+range C3 C6
+wave noise
+layer triangle 0.25 -24
+envelope 0.001 0.24 0 0.05
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 0.55
+gain 0.85
+color 190 170 140
+end
+
+instrument cymbal
+name "Cymbal"
+family percussion
+range C4 C7
+wave noise
+layer none
+metallic 1
+envelope 0.001 1.4 0 0.2
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 1
+gain 0.5
+color 230 220 150
+end
+
+instrument glockenspiel
+name "Glockenspiel"
+family percussion
+range G5 C8
+wave sine
+layer sine 0.3 12
+envelope 0.001 1.2 0 0.15
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 1
+gain 0.5
+color 240 250 255
+layer_envelope 0.001 0.45 0 0.15
+end
+
+instrument xylophone
+name "Xylophone"
+family percussion
+range F4 C8
+wave triangle
+layer sine 0.3 19
+envelope 0.001 0.22 0 0.03
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 0.9
+gain 0.7
+color 220 180 120
+layer_envelope 0.001 0.08 0 0.03
+end
+
+# --- Chip: the three NES channels, straight ---
+
+instrument pulse_lead
+name "Pulse Lead"
+family chip
+range C2 C7
+wave pulse 0.25
+layer none
+envelope 0.004 0.08 0.85 0.04
+vibrato 6 0.08 0.15
+sweep 0 0
+breath 0
+tone 1
+gain 0.55
+color 120 220 255
+end
+
+instrument square_lead
+based_on pulse_lead
+name "Square Lead"
+wave pulse 0.5
+color 150 255 180
+end
+
+instrument triangle_bass
+name "Triangle Bass"
+family chip
+range A0 C5
+wave nes_triangle
+layer none
+envelope 0.002 0.05 1 0.02
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 1
+gain 0.9
+color 255 180 120
+end
+
+instrument choir
+name "Choir"
+family voices
+range E2 A5
+wave pulse 0.5
+layer sine 0.3 0
+envelope 0.14 0.25 0.85 0.3
+vibrato 4.4 0.16 0.3
+sweep 0 0
+breath 0.02
+tone 0.45
+gain 0.55
+color 240 180 220
+end

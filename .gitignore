@@ -1,0 +1,9 @@
+# Build outputs
+*.bin
+*.exe
+*.pdb
+*.o
+/nart
+/nsound
+/nscene
+shot.png

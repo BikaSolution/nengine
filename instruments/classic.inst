@@ -1,0 +1,180 @@
+# nengine instruments: the classic eleven
+#
+# These were hardcoded in the synth until instruments became files. The keys
+# are the same, so every .song written before still names something real and
+# still sounds like itself — a little cleaner, because the oscillators are
+# band-limited now and don't whistle at the top of the range.
+#
+# The format is in instruments/README.md.
+
+instrument sine
+name "Sine"
+family classic
+range C0 C8
+wave sine
+layer none
+envelope 0.0025 1.5 0.75 0.25
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 1
+gain 1
+color 120 180 240
+end
+
+instrument square
+name "Square"
+family classic
+range C1 C8
+wave pulse 0.5
+layer none
+envelope 0.0025 1.5 0.75 0.25
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 1
+gain 1
+color 150 220 150
+end
+
+instrument saw
+name "Saw"
+family classic
+range C0 C8
+wave saw
+layer none
+envelope 0.0025 1.5 0.75 0.25
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 1
+gain 1
+color 240 180 100
+end
+
+# Struck metal. Sustain 0 makes it ring for its own decay however short the
+# note is written, and the octave above gives it the shimmer.
+instrument bell
+name "Bell"
+family classic
+range C2 C8
+wave sine
+layer sine 0.2 12
+envelope 0.0025 2.1 0 0.05
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 1
+gain 1
+color 230 230 255
+layer_envelope 0.0025 1.0 0 0.05
+end
+
+instrument noise
+name "Noise"
+family classic
+range C1 C7
+wave noise
+layer none
+envelope 0.0025 1.5 0.75 0.25
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 1
+gain 1
+color 180 180 180
+end
+
+instrument piano
+name "Piano"
+family classic
+range A0 C8
+wave pulse 0.25
+layer triangle 0.35 0
+envelope 0.003 1.8 0 0.08
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 0.75
+gain 0.9
+color 245 245 235
+end
+
+instrument organ
+name "Organ"
+family classic
+range C1 C7
+wave sine
+layer sine 0.45 12
+envelope 0.02 0.1 1 0.06
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 1
+gain 1
+color 200 160 240
+end
+
+instrument strings
+name "Strings"
+family classic
+range C1 C7
+wave saw
+layer saw 0.5 0.07
+envelope 0.12 0.3 0.85 0.3
+vibrato 5.2 0.09 0.1
+sweep 0 0
+breath 0
+tone 0.6
+gain 0.8
+color 236 112 84
+vel_tone 1
+end
+
+instrument flute
+name "Flute"
+family classic
+range C3 C7
+wave sine
+layer sine 0.08 12
+envelope 0.04 0.2 0.9 0.15
+vibrato 4.6 0.06 0.25
+sweep 0 0
+breath 0.05
+tone 0.9
+gain 0.9
+color 160 230 220
+end
+
+# Karplus-Strong: a real string model, not an oscillator.
+instrument pluck
+name "Pluck"
+family classic
+range C1 C7
+wave string
+layer none
+envelope 0.001 3.8 0 0.2
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 1
+gain 1
+color 246 190 120
+end
+
+instrument marimba
+name "Marimba"
+family classic
+range F2 C7
+wave sine
+layer sine 0.4 36
+envelope 0.001 0.5 0 0.04
+vibrato 0 0 0
+sweep 0 0
+breath 0
+tone 0.9
+gain 1
+color 210 160 110
+# the high overtone is the mallet: a knock, then the bar rings
+layer_envelope 0.001 0.12 0 0.04
+end
