@@ -1,0 +1,23 @@
+version: 2
+updates:
+  # nengine has no package manager: Odin's core library and vendor:raylib only.
+  # This keeps any GitHub Actions the repository adds pinned and up to date.
+  - package-ecosystem: github-actions
+    directory: /
+    labels:
+      - dependencies
+      - actions
+    schedule:
+      interval: weekly
+      time: "09:00"
+      timezone: "UTC"
+      day: monday
+    groups:
+      security-updates:
+        applies-to: security-updates
+        patterns:
+          - "*"
+      version-updates:
+        applies-to: version-updates
+        patterns:
+          - "*"
