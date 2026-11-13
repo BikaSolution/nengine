@@ -598,9 +598,7 @@ cue_line :: proc(q: ne.Cue) -> string {
 	case .Say:     return fmt.tprintf("say %v", q.text)
 	case .Think:   return fmt.tprintf("think %v", q.text)
 	case .Narrate: return fmt.tprintf("narrate %v", q.text)
-	case .Line:
-		if q.tag != "" do return fmt.tprintf("line %v %v tag=%v", q.text, ne.line_range_text(q.lines), q.tag)
-		return fmt.tprintf("line %v %v", q.text, ne.line_range_text(q.lines))
+	case .Line, .Shot: return ne.cue_body_text(q)
 	case .Shake:   return fmt.tprintf("shake %.2f", q.amount)
 	case .Sound:   return fmt.tprintf("sound %v", q.text)
 	case .Leave:   return fmt.tprintf("leave %v", ne.COMPASS_WORDS[q.dir])

@@ -14,13 +14,17 @@ import rl "vendor:raylib"
 //     cut arrival scene=veranda
 //     cast ada  char=ada  at=240,470 facing=right
 //     cast heir char=heir at=700,470 facing=left
+//     cast cart char=cart at=-80,500 speed=60
 //     0.0  ada   walk_to 420,470
 //     1.6  heir  face left
 //     2.0  heir  say You're the agency girl.
 //     3.4  ada   think He knows my name.
 //     4.0  line  A2.GT.FENCE 3-5
+//     4.5  cart  walk_to 1100,500
 //     5.0  camera shake 0.4
-//     6.0  end
+//     5.5  line  A2.GT.GATE 1-4 shot=gate_two_shot frames=0,1,0,1
+//     9.0  shot  off
+//     10.0 end
 //
 // The times are seconds from the start and the file is kept in that order.
 // A cue fires when the clock passes it; nothing waits for anything else, which
@@ -29,8 +33,9 @@ import rl "vendor:raylib"
 // happens when, and the editor can draw it as a timeline because it is one.
 //
 // What a cue may do is deliberately small — walk, turn, play a part, speak,
-// think, a line of narration, a dialogue node's lines, a shake, a sound, and end. Everything else the engine can do
-// is a trigger's job, not a cutscene's.
+// think, a line of narration, a dialogue node's lines, a painted shot over the
+// room, a shake, a sound, and end. Everything else the engine can do is a
+// trigger's job, not a cutscene's.
 
 Cue_Action :: enum {
 	Walk_To, // walk to a spot, in their own time
@@ -40,6 +45,7 @@ Cue_Action :: enum {
 	Think,   // a thought box
 	Narrate, // a plain message with nobody's portrait
 	Line,    // lines of a dialogue node, by their own speakers (nodes.odin)
+	Shot,    // a painted picture over the whole room, or `off` to take it down
 	Shake,   // the camera
 	Sound,   // play a named sound
 	Leave,   // off through a side of the room and out of sight (side.odin)
@@ -52,12 +58,19 @@ Cue :: struct {
 	action: Cue_Action,
 	to:     [2]f32, // Walk_To
 	facing: Facing, // Face
-	text:   string, // Say, Think, Narrate, the sound's name for Sound, the node's id for Line
+	text:   string, // Say, Think, Narrate, the sound's name for Sound, the node's id for Line, the sprite for Shot ("" is `off`)
 	amount: f32,    // Shake: how long. Play: seconds, when it is not `times`
 	times:  int,    // Play: how many times through; 0 is for `amount` seconds
 	lines:  [2]int, // Line: the first and last of the node's lines, counted from 1
 	tag:    string, // Line: which telling (play_node's `tag`); "" is the untagged lines only
 	dir:    Compass, // Leave
+	// Line: the painted shot its lines are shown in (`shot=`), and the shot's
+	// frame for each line in turn (`frames=0,1,0`), the last repeating. Either
+	// alone does: `frames=` without `shot=` changes the frames of the shot
+	// already up. Both empty: the lines leave the picture as it is.
+	shot:   string,
+	frames: []i32,
+	frame:  i32, // Shot: which frame of the picture
 }
 
 Cast_Member :: struct {
@@ -73,6 +86,10 @@ Cast_Member :: struct {
 	// `enter=west`: brought on through that side of the room, from where
 	// they went off in the last cut (side.odin).
 	enter:       Maybe(Compass),
+	// `speed=60`: canvas pixels a second their walks go, for somebody who is
+	// not walking (a cart, a boat, an aeroplane crossing the sky). 0 is
+	// CUT_SPEED. A part with `step=` keeps its feet with it (walk_rate).
+	speed:       f32,
 }
 
 Cutscene :: struct {
@@ -94,13 +111,19 @@ cutscene_destroy :: proc(c: ^Cutscene) {
 		delete(m.character)
 	}
 	delete(c.people)
-	for q in c.cues {
-		delete(q.who)
-		delete(q.text)
-		delete(q.tag)
-	}
+	for &q in c.cues do cue_destroy(&q)
 	delete(c.cues)
 	c^ = {}
+}
+
+// Frees what parse_cutscene gave one cue.
+cue_destroy :: proc(q: ^Cue) {
+	delete(q.who)
+	delete(q.text)
+	delete(q.tag)
+	delete(q.shot)
+	delete(q.frames)
+	q^ = {}
 }
 
 // When the last thing happens. An `end` cue sets it outright; otherwise it's
@@ -171,6 +194,7 @@ parse_cutscene :: proc(text: string) -> (c: Cutscene, ok: bool) {
 			if e, has := field(l, "enter"); has {
 				if d, good := compass_of(e); good do m.enter = d
 			}
+			if s, has := field(l, "speed"); has do m.speed = max(number(s, 0), 0)
 			append(&c.people, m)
 
 		case:
@@ -196,7 +220,9 @@ parse_cue :: proc(raw: string, at: f32) -> (q: Cue, ok: bool) {
 	//   <t> end                    nobody, nothing after it
 	//   <t> narrate <text>         nobody; the word itself is the verb
 	//   <t> sound <name>
-	//   <t> line <node> <n>[-<m>] [tag=<telling>]
+	//   <t> line <node> <n>[-<m>] [tag=<telling>] [shot=<sprite>] [frames=<f>,<f>...]
+	//   <t> shot <sprite> [<frame>]
+	//   <t> shot off
 	//   <t> camera shake <secs>    nobody, but the verb is the SECOND word
 	//   <t> <who> <verb> <rest>    everybody else
 	//
@@ -212,7 +238,7 @@ parse_cue :: proc(raw: string, at: f32) -> (q: Cue, ok: bool) {
 	}
 	if len(l.words) < 2 do return {}, false
 	switch first {
-	case "narrate", "sound", "line":
+	case "narrate", "sound", "line", "shot":
 		verb, skip = first, 2
 	case "camera":
 		// "camera" names no one; the verb is what it is being asked to do.
@@ -276,6 +302,15 @@ parse_cue :: proc(raw: string, at: f32) -> (q: Cue, ok: bool) {
 		q.text = strings.clone(l.words[1])
 		q.lines = span
 		q.tag = strings.clone(field_or(l, "tag", ""))
+		q.shot = strings.clone(field_or(l, "shot", ""))
+		q.frames = parse_frames(field_or(l, "frames", ""))
+	case "shot":
+		// `shot two_shot`, `shot two_shot 2`, `shot off`.
+		q.action = .Shot
+		q.text = strings.clone("" if l.words[1] == "off" else l.words[1])
+		if len(l.words) > 2 {
+			if f, good := strconv.parse_int(l.words[2]); good do q.frame = i32(max(f, 0))
+		}
 	case:
 		delete(q.who)
 		return {}, false
@@ -312,6 +347,7 @@ cast_text :: proc(m: Cast_Member, allocator := context.temp_allocator) -> string
 	if !m.keep_place do fmt.sbprintf(&b, " at=%v,%v", int(m.at.x), int(m.at.y))
 	if !m.keep_facing do fmt.sbprintf(&b, " facing=%v", facing_text(m.facing))
 	if d, has := m.enter.?; has do fmt.sbprintf(&b, " enter=%v", COMPASS_WORDS[d])
+	if m.speed > 0 do fmt.sbprintf(&b, " speed=%v", m.speed)
 	return strings.to_string(b)
 }
 
@@ -347,8 +383,16 @@ cue_body_text :: proc(q: Cue, allocator := context.temp_allocator) -> string {
 	case .Leave:
 		return fmt.aprintf("%v leave %v", q.who, COMPASS_WORDS[q.dir], allocator = allocator)
 	case .Line:
-		if q.tag != "" do return fmt.aprintf("line %v %v tag=%v", q.text, line_range_text(q.lines), q.tag, allocator = allocator)
-		return fmt.aprintf("line %v %v", q.text, line_range_text(q.lines), allocator = allocator)
+		b := strings.builder_make(allocator)
+		fmt.sbprintf(&b, "line %v %v", q.text, line_range_text(q.lines))
+		if q.tag != "" do fmt.sbprintf(&b, " tag=%v", q.tag)
+		if q.shot != "" do fmt.sbprintf(&b, " shot=%v", q.shot)
+		if len(q.frames) > 0 do fmt.sbprintf(&b, " frames=%v", frames_text(q.frames))
+		return strings.to_string(b)
+	case .Shot:
+		if q.text == "" do return fmt.aprint("shot off", allocator = allocator)
+		if q.frame != 0 do return fmt.aprintf("shot %v %v", q.text, q.frame, allocator = allocator)
+		return fmt.aprintf("shot %v", q.text, allocator = allocator)
 	}
 	return ""
 }
@@ -377,6 +421,39 @@ line_range_text :: proc(span: [2]int, allocator := context.temp_allocator) -> st
 	last := max(span[1], first)
 	if last == first do return fmt.aprintf("%v", first, allocator = allocator)
 	return fmt.aprintf("%v-%v", first, last, allocator = allocator)
+}
+
+// `0,1,0,2` is the frames {0, 1, 0, 2}. A word that is not a frame number is
+// left out; nothing at all is nil.
+parse_frames :: proc(s: string, allocator := context.allocator) -> []i32 {
+	if s == "" do return nil
+	out := make([dynamic]i32, allocator)
+	rest := s
+	for part in strings.split_iterator(&rest, ",") {
+		if f, ok := strconv.parse_int(strings.trim_space(part)); ok && f >= 0 do append(&out, i32(f))
+	}
+	if len(out) == 0 {
+		delete(out)
+		return nil
+	}
+	return out[:]
+}
+
+// The other way: {0, 1, 0, 2} is `0,1,0,2`.
+frames_text :: proc(frames: []i32, allocator := context.temp_allocator) -> string {
+	b := strings.builder_make(allocator)
+	for f, i in frames {
+		if i > 0 do strings.write_byte(&b, ',')
+		fmt.sbprintf(&b, "%v", f)
+	}
+	return strings.to_string(b)
+}
+
+// The frame of a `line` cue's shot for the i-th of its lines played (from 0):
+// its own, or the last one given, or the first frame with none given.
+shot_frame_for :: proc(frames: []i32, i: int) -> i32 {
+	if len(frames) == 0 do return 0
+	return frames[clamp(i, 0, len(frames) - 1)]
 }
 
 @(private = "file")
@@ -433,12 +510,18 @@ facing_text :: proc(f: Facing) -> string {
 // in, borrows the people already standing in it and the player herself, and
 // brings on whoever else it names for as long as it lasts.
 //
-// Either way a walk is a straight line at CUT_SPEED, ignoring the floor:
-// that is what the cutscene editor draws and times, so what an author times
-// there is what happens in the game, and somebody can walk in from off the
-// edge of the floor, which a player never can.
+// Either way a walk is a straight line at CUT_SPEED, or the cast member's
+// own `speed=`, ignoring the floor: that is what the cutscene editor draws and
+// times, so what an author times there is what happens in the game, and
+// somebody can walk in from off the edge of the floor, which a player never
+// can.
 
 CUT_SPEED :: f32(190)
+
+// How fast a cast member's walks go: their `speed=`, or CUT_SPEED.
+cast_speed :: proc(m: Cast_Member) -> f32 {
+	return m.speed if m.speed > 0 else CUT_SPEED
+}
 
 // Who a cast member is, played in a World.
 Cast_Role :: enum {
@@ -456,6 +539,11 @@ Cutscene_Player :: struct {
 	// A `line` cue's later lines, each waiting for its moment. In time order.
 	queued:  [dynamic]Queued_Line,
 	said_at: f32, // `t` when the last line went up, for Enter's grace
+	// The painted shot up now, over the whole room (a `shot` cue, or a `line`
+	// cue's `shot=`), and its frame; "" for the room. Borrowed from the cue.
+	// It stays up until a `shot off`, another shot, or the end.
+	shot:       string,
+	shot_frame: i32,
 
 	// Played in a World (play_cutscene) rather than by itself. `roles` is
 	// empty by itself, and everybody is an extra.
@@ -485,8 +573,13 @@ Cut_Resume :: struct {
 }
 
 Queued_Line :: struct {
-	at:   f32,
-	line: Talk_Line, // borrowed from the node, which outlives the cutscene
+	at:     f32,
+	line:   Talk_Line, // borrowed from the node, which outlives the cutscene
+	// Its `line` cue's shot and this line's frame of it, put up as it is
+	// said; `framed` false leaves the picture as it is.
+	framed: bool,
+	shot:   string,
+	frame:  i32,
 }
 
 // How a cue's words go out: in boxes, not at all (a skip), or to the harness.
@@ -507,7 +600,7 @@ cutscene_start :: proc(p: ^Cutscene_Player, c: ^Cutscene, assets: ^Assets, speed
 	for m in c.people {
 		a := Actor {
 			pos      = m.at,
-			speed    = speed,
+			speed    = m.speed if m.speed > 0 else speed,
 			idle_fps = 4,
 			walk_fps = 8,
 			facing   = m.facing,
@@ -543,9 +636,10 @@ cut_frame :: proc(p: ^Cutscene_Player, w: ^World, dt: f32, mode: Cut_Mode, out: 
 		cue_due := p.next < len(p.cut.cues) && p.cut.cues[p.next].at <= p.t
 		line_due := len(p.queued) > 0 && p.queued[0].at <= p.t
 		if line_due && (!cue_due || p.queued[0].at <= p.cut.cues[p.next].at) {
-			l := p.queued[0].line
+			ql := p.queued[0]
 			ordered_remove(&p.queued, 0)
-			cut_talk_line(w, l, mode, out)
+			if ql.framed do cut_set_shot(p, ql.shot, ql.frame, mode, out)
+			cut_talk_line(w, ql.line, cut_pictured(p, w), mode, out)
 			if mode == .Play do p.said_at = p.t
 			continue
 		}
@@ -638,11 +732,19 @@ cue_fire :: proc(p: ^Cutscene_Player, w: ^World, q: Cue, mode: Cut_Mode, out: ^s
 			else do actor_play(actor, q.text, times = 0, secs = max(q.amount, 0.1))
 		}
 	case .Say, .Think, .Narrate:
-		cut_line(w, q, mode, out)
+		cut_line(w, q, cut_pictured(p, w), mode, out)
 		if mode == .Play do p.said_at = p.t
 	case .Line:
 		cut_node_lines(p, w, q, mode, out)
 		if mode == .Play do p.said_at = p.t
+	case .Shot:
+		// Staging, like a turn: done when skipped too.
+		if q.text == "" {
+			if p.shot != "" && mode == .Aloud do fmt.sbprintln(out, "  [shot off]")
+			p.shot, p.shot_frame = "", 0
+		} else {
+			cut_set_shot(p, q.text, q.frame, mode, out)
+		}
 	case .Shake:
 		if mode == .Play do w.shake = max(w.shake, q.amount)
 	case .Sound:
@@ -657,11 +759,48 @@ cue_fire :: proc(p: ^Cutscene_Player, w: ^World, q: Cue, mode: Cut_Mode, out: ^s
 	return true
 }
 
+// Puts up a painted shot, or changes its frame: `name` "" keeps the shot
+// that is up. The harness is told when the picture changes, not the frame.
+@(private = "file")
+cut_set_shot :: proc(p: ^Cutscene_Player, name: string, frame: i32, mode: Cut_Mode, out: ^strings.Builder) {
+	if name != "" && name != p.shot {
+		if mode == .Aloud do fmt.sbprintfln(out, "  [shot %v]", name)
+		p.shot = name
+	}
+	p.shot_frame = frame
+}
+
+// The shot up now, as a picture that is there to draw: a shot whose sprite
+// was never drawn is no shot, and the lines play over the room.
+@(private)
+cut_shot_sprite :: proc(p: ^Cutscene_Player, w: ^World) -> (shot: Sprite, frame: i32, ok: bool) {
+	if p.shot == "" || w == nil || w.assets == nil do return {}, 0, false
+	s, has := w.assets.sprites[p.shot]
+	if !has || s.texture.id == 0 do return {}, 0, false
+	return s, p.shot_frame, true
+}
+
+@(private = "file")
+cut_pictured :: proc(p: ^Cutscene_Player, w: ^World) -> bool {
+	_, _, ok := cut_shot_sprite(p, w)
+	return ok
+}
+
+// The painted shot a cutscene playing in the World has up, by name, and its
+// frame. False while there is none, or no cutscene. (Drawn by draw_canvas,
+// over the whole room, as a conversation's close-up is.)
+cutscene_shot :: proc(w: ^World) -> (name: string, frame: i32, ok: bool) {
+	if !cutting(w) || w.cut.shot == "" do return "", 0, false
+	return w.cut.shot, w.cut.shot_frame, true
+}
+
 // A line, said as a conversation says one: by the World's speaker of that
 // name, so a portrait comes with it, or named on the box when there is no
 // face to show (and by the cast name, when there is no speaker at all).
+// Under a painted shot everybody is named and nobody pictured: the face is
+// the picture.
 @(private = "file")
-cut_line :: proc(w: ^World, q: Cue, mode: Cut_Mode, out: ^strings.Builder) {
+cut_line :: proc(w: ^World, q: Cue, pictured: bool, mode: Cut_Mode, out: ^strings.Builder) {
 	who := speaker_named(w, q.who) if q.who != "" else nil
 	name := who.name if who != nil else q.who
 	switch mode {
@@ -681,7 +820,8 @@ cut_line :: proc(w: ^World, q: Cue, mode: Cut_Mode, out: ^strings.Builder) {
 			return
 		}
 		text := q.text
-		if name != "" && (who == nil || who.portrait.texture.id == 0) do text = fmt.tprintf("%v: %v", name, q.text)
+		if name != "" && (who == nil || who.portrait.texture.id == 0 || pictured) do text = fmt.tprintf("%v: %v", name, q.text)
+		if pictured do who = nil
 		if q.action == .Think do think(w, who, text)
 		else do say_as(w, who, text)
 	}
@@ -692,6 +832,8 @@ cut_line :: proc(w: ^World, q: Cue, mode: Cut_Mode, out: ^strings.Builder) {
 // would play them). The first is said now and each of the rest when the one
 // before has had its reading time (line_secs). They are only said: the node
 // is not played, so nothing it `sets` is set and it is not marked said.
+// With `shot=` or `frames=`, each line puts up its frame of the shot as it
+// is said.
 @(private = "file")
 cut_node_lines :: proc(p: ^Cutscene_Player, w: ^World, q: Cue, mode: Cut_Mode, out: ^strings.Builder) {
 	first := max(q.lines[0], 1)
@@ -704,19 +846,22 @@ cut_node_lines :: proc(p: ^Cutscene_Player, w: ^World, q: Cue, mode: Cut_Mode, o
 	}
 	at := q.at
 	number := 0
+	framed := q.shot != "" || len(q.frames) > 0
 	for l, i in n.lines {
 		t := n.tags[i] if i < len(n.tags) else ""
 		if t != "" && (q.tag == "" || t != q.tag) do continue
 		number += 1
 		if number < first do continue
 		if number > last do break
+		frame := shot_frame_for(q.frames, number - first)
 		if number == first {
-			cut_talk_line(w, l, mode, out)
+			if framed do cut_set_shot(p, q.shot, frame, mode, out)
+			cut_talk_line(w, l, cut_pictured(p, w), mode, out)
 		} else {
 			// In time order among any already waiting.
 			j := len(p.queued)
 			for j > 0 && p.queued[j - 1].at > at do j -= 1
-			inject_at(&p.queued, j, Queued_Line{at = at, line = l})
+			inject_at(&p.queued, j, Queued_Line{at = at, line = l, framed = framed, shot = q.shot, frame = frame})
 		}
 		at += line_secs(l.text)
 	}
@@ -724,10 +869,10 @@ cut_node_lines :: proc(p: ^Cutscene_Player, w: ^World, q: Cue, mode: Cut_Mode, o
 }
 
 // One of a node's lines, as a conversation shows it: by its own speaker, with
-// the portrait, named on the box when there is no face; a stage direction (no
-// speaker) as narration.
+// the portrait, named on the box when there is no face (or a painted shot is
+// up); a stage direction (no speaker) as narration.
 @(private = "file")
-cut_talk_line :: proc(w: ^World, l: Talk_Line, mode: Cut_Mode, out: ^strings.Builder) {
+cut_talk_line :: proc(w: ^World, l: Talk_Line, pictured: bool, mode: Cut_Mode, out: ^strings.Builder) {
 	name := l.who.name if l.who != nil else ""
 	switch mode {
 	case .Quiet:
@@ -745,9 +890,11 @@ cut_talk_line :: proc(w: ^World, l: Talk_Line, mode: Cut_Mode, out: ^strings.Bui
 			return
 		}
 		text := l.text
-		if name != "" && l.who.portrait.texture.id == 0 do text = fmt.tprintf("%v: %v", name, l.text)
-		if l.thinking do think(w, l.who, text)
-		else do say_as(w, l.who, text)
+		who := l.who
+		if name != "" && (who.portrait.texture.id == 0 || pictured) do text = fmt.tprintf("%v: %v", name, l.text)
+		if pictured do who = nil
+		if l.thinking do think(w, who, text)
+		else do say_as(w, who, text)
 	}
 }
 
@@ -836,7 +983,7 @@ start_cutscene :: proc(w: ^World, c: ^Cutscene, then: proc(w: ^World) = nil) -> 
 		switch role {
 		case .Player:
 			cast_place(&w.player, m)
-			w.player.speed = CUT_SPEED
+			w.player.speed = cast_speed(m)
 			actor_stop_anim(&w.player)
 			append(&p.actors, Actor{})
 			append(&p.saved, Actor{})
@@ -844,13 +991,13 @@ start_cutscene :: proc(w: ^World, c: ^Cutscene, then: proc(w: ^World) = nil) -> 
 			o := &scene.objects[obj]
 			append(&p.saved, o.actor) // as they stood, to put back after
 			cast_place(&o.actor, m)
-			o.actor.speed = CUT_SPEED
+			o.actor.speed = cast_speed(m)
 			o.actor.moving = false
 			actor_stop_anim(&o.actor)
 			o.pos = o.actor.pos
 			append(&p.actors, Actor{})
 		case .Extra:
-			a := Actor{pos = m.at, speed = CUT_SPEED, idle_fps = 4, walk_fps = 8, facing = m.facing, facing_left = m.facing == .Left}
+			a := Actor{pos = m.at, speed = cast_speed(m), idle_fps = 4, walk_fps = 8, facing = m.facing, facing_left = m.facing == .Left}
 			if m.keep_place do a.pos = extra_start(c, m, scene)
 			a.character = cast_art(w, scene, m)
 			append(&p.actors, a)

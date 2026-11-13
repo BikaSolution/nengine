@@ -18,6 +18,9 @@ Scene :: struct {
 	// painted. `background` is day's. See light.odin.
 	backdrop:         [Light]Sprite,
 	backdrop_painted: bit_set[Light],
+	// Layers that drift sideways over the backdrop, back to front in the
+	// order the file gives them: clouds, a river's water. See Drift.
+	drifts:           [dynamic]Drift,
 	// A room with a roof: the light outside changes only while the player is
 	// in one of these, or going through its door. See light.odin.
 	indoors:     bool,
@@ -82,6 +85,24 @@ Scene :: struct {
 	// strings it owns, so clear_world frees them. Scenes built in code use
 	// string literals instead, which must not be freed.
 	from_file:   bool,
+}
+
+// A layer of the picture that drifts left and repeats sideways, as the title
+// screen's do (Layer, menu.odin):
+//
+//     drift clouds speed=6 y=0
+//     drift river speed=24 y=300 fps=5
+//
+// It is drawn over the backdrop and under everything standing in the room, so
+// people and things are never behind it. Its left and right edges should join
+// up, as a title layer's do. A layer of several frames plays them at `fps`:
+// moving water. It is painted for each light as a backdrop is (light.odin):
+// `clouds.night` beside `clouds` is the night's; a light it was not painted
+// for borrows another and is shown through the room's tint.
+Drift :: struct {
+	name:  string,     // the sprite it came from
+	layer: Layer,      // speed, y and fps; its sprite is the day's
+	lit:   Lit_Sprite, // the layer in each light it was painted in
 }
 
 // What an object does when a verb lands on it.
@@ -168,6 +189,9 @@ Object :: struct {
 	// a guest in a chair, a man on a step. A routine's `play` borrows the
 	// actor's pose for its own step and gives this back.
 	rest_pose:   string,
+	// `facing=`: the way they face standing on their line, turned back to when
+	// they arrive from walking on (side.odin), whichever way they walked.
+	rest_facing: Facing,
 
 	// Drawing order. `pos.y` is where the thing meets the floor and is what
 	// sorts it; `base` shifts that line without moving the sprite, for art
@@ -453,6 +477,22 @@ draw_world_top :: proc(w: ^World) {
 @(private)
 SIGHT_ITEM :: min(int) / 2
 
+// A drifting layer in the room's light: as painted for it, or another
+// light's painting through the room's tint, as a backdrop is.
+@(private)
+draw_drift :: proc(d: Drift, light: Light, tint: Palette_Map, plain: bool, time: f32) {
+	l := d.layer
+	raw := plain
+	if d.lit.painted != {} {
+		l.sprite = d.lit.by[light]
+		raw = raw || light in d.lit.painted
+	}
+	if l.sprite.texture.id == 0 do return
+	if !raw do begin_tint(tint)
+	draw_layer(l, time)
+	if !raw do end_tint()
+}
+
 @(private)
 draw_room :: proc(w: ^World, scene: ^Scene, player: bool) {
 	light := room_light(w, scene)
@@ -469,6 +509,7 @@ draw_room :: proc(w: ^World, scene: ^Scene, player: bool) {
 		draw_sprite_at(scene.background, 0, 0, 0)
 		if !plain do end_tint()
 	}
+	for d in scene.drifts do draw_drift(d, light, tint, plain, w.time)
 	if w.debug && scene == current_scene(w) do draw_debug_floor(scene) // under the sprites, so they keep their colours
 
 // Painter's algorithm: whoever's feet are lower on screen is nearer the

@@ -760,4 +760,15 @@ a_person_who_walked_off_or_on_keeps_the_pose_of_their_line :: proc(t: ^testing.T
 	settle_coming(&o)
 	testing.expect_value(t, o.actor.pose, "post")
 	testing.expect_value(t, o.actor.pos, [2]f32{112, 538})
+	// And the way their line faces: in from the south, she walked facing
+	// away, and turns to face the way she stands.
+	o.rest_facing = .Right
+	o.coming = true
+	o.actor.facing = .Back
+	settle_coming(&o)
+	testing.expect_value(t, o.actor.facing, Facing.Right)
+	o.going = true
+	o.actor.facing = .Left
+	settle_going(&o)
+	testing.expect_value(t, o.actor.facing, Facing.Right)
 }

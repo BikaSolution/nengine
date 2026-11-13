@@ -659,6 +659,8 @@ settle_going :: proc(o: ^Object) {
 	// Walking cleared their pose (person_leave): back to their line's, for
 	// whenever they are next in sight.
 	o.actor.pose = o.rest_pose
+	o.actor.facing = o.rest_facing
+	o.actor.facing_left = o.rest_facing == .Left
 	o.actor.pos = o.going_from
 	o.pos = o.going_from
 	o.actor.moving = false
@@ -671,6 +673,8 @@ settle_going :: proc(o: ^Object) {
 settle_coming :: proc(o: ^Object) {
 	o.coming = false
 	o.actor.pose = o.rest_pose // arrived: sitting, leaning, as their line says
+	o.actor.facing = o.rest_facing
+	o.actor.facing_left = o.rest_facing == .Left
 	o.actor.pos = o.coming_to
 	o.pos = o.coming_to
 	o.actor.moving = false

@@ -38,6 +38,7 @@ Layer :: struct {
 	speed:  f32,    // pixels a second it drifts left. 0 stays put.
 	y:      f32,    // where its top edge sits
 	night:  Sprite, // the same layer painted in the later light, the same size; the dusk turns `sprite` into it. Zero: it never changes
+	fps:    f32,    // a layer of several frames plays them at this rate, with their holds: moving water. 0 shows the first
 }
 
 // The game's page about itself: a tab and some paragraphs, wrapped to fit.
@@ -280,14 +281,26 @@ menu_layer_now :: proc(m: ^Menu, i: int, dusk: f32) -> Layer {
 	return l
 }
 
-// Draws a layer repeated sideways, shifted by how far it has drifted.
+// Draws a layer repeated sideways, shifted by how far it has drifted. The
+// title screen's layers and a room's drifting ones (Drift, scene.odin) are
+// both drawn by this.
 @(private)
 draw_layer :: proc(l: Layer, time: f32) {
 	w := f32(l.sprite.frame_w)
 	if w <= 0 do return
+	frame := layer_frame(l, time)
 	for x := layer_offset(time, l.speed, w); x < f32(WIDTH); x += w {
-		draw_sprite_at(l.sprite, 0, i32(x), i32(l.y))
+		draw_sprite_at(l.sprite, frame, i32(x), i32(l.y))
 	}
+}
+
+// Which of its frames a layer shows at `time`: its first, unless it has
+// several and an `fps`, when it plays them in a loop as a sprite does.
+@(private)
+layer_frame :: proc(l: Layer, time: f32) -> i32 {
+	if l.fps <= 0 || l.sprite.frames <= 1 do return 0
+	frame, _ := anim_frame(time, l.fps, l.sprite.frames, l.sprite.holds)
+	return frame
 }
 
 // Where a layer's first copy starts: slides from 0 down towards -width, then

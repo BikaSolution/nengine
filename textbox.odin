@@ -63,6 +63,15 @@ BOX_THOUGHT :: Box_Style {
 }
 
 // Who is speaking, and what they look like while they do it.
+// A speaker puts on a character part as their portrait: the picture, and the
+// part's own animation rate when it has one, so a face with talk frames talks.
+// A speaker whose frame the game holds (fps 0 and `frame`, a meter) sets that
+// after, as before.
+speaker_wears :: proc(sp: ^Speaker, part: Part_Art) {
+	sp.portrait = part.sprite
+	if part.fps > 0 do sp.fps = part.fps
+}
+
 Speaker :: struct {
 	name:     string,
 	portrait: Sprite, // a character's "face" part, or any sprite
@@ -95,9 +104,10 @@ draw_box :: proc(style: Box_Style, text: string, who: ^Speaker = nil, time: f32 
 	if who != nil && who.portrait.texture.id != 0 {
 		portrait_w = f32(who.portrait.frame_w)
 		portrait_h = f32(who.portrait.frame_h)
-		// Never more than a quarter of the width or a third of the height,
-		// however big the art happens to be.
-		fit := min(f32(WIDTH) * 0.25 / portrait_w, f32(HEIGHT) * 0.33 / portrait_h, 1)
+		// Never more than a quarter of the width or 38% of the height,
+		// however big the art happens to be. A big EGA-style bust
+		// (about 60x72 on a 320x200 picture) fits whole.
+		fit := min(f32(WIDTH) * 0.25 / portrait_w, f32(HEIGHT) * 0.38 / portrait_h, 1)
 		portrait_w *= fit
 		portrait_h *= fit
 	}

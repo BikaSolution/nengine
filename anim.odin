@@ -97,7 +97,7 @@ actor_playing :: proc(a: ^Actor) -> bool {
 // part that is not drawn, or does not animate.
 actor_part_secs :: proc(a: ^Actor, part: string) -> f32 {
 	if a.character == nil do return 0
-	p, has := a.character.parts[part]
+	p, has := a.character.parts[actor_turned(a^, part)]
 	if !has || p.sprite.texture.id == 0 do return 0
 	return anim_secs(p.sprite.frames, p.fps, p.holds)
 }

@@ -19,6 +19,12 @@ import rl "vendor:raylib"
 //   Actor.step        a footstep, played as each foot lands (walk frames 0 and 2).
 //   World.key_sound   a click for each key typed at the prompt.
 //   play()            anything else, from game code: a door creaking open.
+//   play_music()      the score, over the room: a cue once, or a bed. It can
+//                     duck under the words, and come from somewhere
+//                     (music_from): a gramophone through a door.
+//   play_over()       a cue over the score: the score is held where it was,
+//                     and comes back when the cue is over (stop_over).
+//   Death.music       a cue over everything as the death box opens.
 //
 // Sounds can come from files (assets_sound, assets_loop), or be built from raw
 // samples (sound_from_samples, loop_from_samples). Samples are for
@@ -135,13 +141,21 @@ update_audio :: proc(w: ^World) {
 		rl.SetMusicPan(scene.ambience.music, 0)
 		rl.UpdateMusicStream(scene.ambience.music)
 	}
-	if w.music != nil {
+	// Words on the screen duck the music that asked to be (`duck`): down in
+	// a third of a second, and up again as fast once they are read.
+	w.ducked = clamp(w.ducked + (DUCK_STEP if talking(w) else -DUCK_STEP), 0, 1)
+	if w.over != nil {
+		loop_volume(w.over, w.over_volume * duck_gain(w, w.over_duck))
+		rl.UpdateMusicStream(w.over.music)
+		if over_done(w) do stop_over(w) // and the music it held comes back
+	}
+	// Held under a cue, the music is paused where it was, and left alone.
+	if w.music != nil && w.over == nil {
+		volume, pan := music_level(w)
+		loop_volume(w.music, volume)
+		rl.SetMusicPan(w.music.music, pan)
 		rl.UpdateMusicStream(w.music.music)
-		if !w.music.music.looping && !rl.IsMusicStreamPlaying(w.music.music) {
-			w.music = nil
-			delete(w.music_name)
-			w.music_name = ""
-		}
+		if !w.music.music.looping && !rl.IsMusicStreamPlaying(w.music.music) do stop_music(w)
 	}
 	if loop_open(&w.bed) {
 		// A room whose ambience is the bed's sound plays it nearer: the bed
@@ -165,13 +179,20 @@ update_audio :: proc(w: ^World) {
 		}
 	}
 
-	// Footsteps: the walk cycle's feet land on frames 0 and 2.
+	// Footsteps: a walk's feet land on its first frame and halfway round
+	// (0 and 2 of four, 0 and 3 of six), on the frame actually drawn, so the
+	// sound keeps time with a walk of any length at any rate (actor_picture).
 	p := &w.player
-	step := i32(-1)
-	if p.walking do step = i32(p.anim_time * p.walk_fps) % max(p.walk.frames, 1)
+	step, contact := i32(-1), false
+	if p.walking {
+		pic, frame, _ := actor_picture(p^)
+		n := max(pic.frames, 1)
+		step = frame % n
+		contact = step == 0 || (n >= 2 && step == n / 2)
+	}
 	// The floor's own footstep, where it has one: boards, tiles, a deck.
 	footstep := scene.step if scene.step.frameCount > 0 else p.step
-	if step != p.last_step && (step == 0 || step == 2) do play(footstep, 0.6)
+	if step != p.last_step && contact do play(footstep, 0.6)
 	p.last_step = step
 }
 
@@ -285,20 +306,23 @@ forget_heard :: proc(w: ^World) {
 // Music over the room, by name: what `just bake` made of a .song, streamed
 // from its file. `loop` false plays it once and lets it go (a cue); true keeps
 // it going (a bed) until stop_music or another play_music. The room's
-// ambience carries on under it.
-play_music :: proc(w: ^World, name: string, loop := false, volume: f32 = 1) {
+// ambience carries on under it. `duck` is how loud it goes, of itself, while
+// a conversation is up (an eavesdrop is one): 1 never ducks, 0.4 is a bed
+// that gets out of the way of the words. Started under a cue (play_over), it
+// waits, held, until the cue is over.
+play_music :: proc(w: ^World, name: string, loop := false, volume: f32 = 1, duck: f32 = 1) {
 	stop_music(w)
 	if w.assets == nil do return
 	m := assets_loop(w.assets, name)
 	if m == nil do return
 	m.music.looping = loop
-	loop_volume(m, volume)
-	// From the top. raylib's seek writes to the stream's buffer, which a
-	// stream opened with no audio device does not have.
-	if m.music.stream.buffer != nil do rl.SeekMusicStream(m.music, 0)
-	rl.PlayMusicStream(m.music)
 	w.music = m
 	w.music_name = strings.clone(name)
+	w.music_volume, w.music_duck = volume, duck
+	level, _ := music_level(w)
+	loop_volume(m, level)
+	stream_from_the_top(m)
+	if w.over != nil do hold_stream(m)
 }
 
 stop_music :: proc(w: ^World) {
@@ -306,6 +330,148 @@ stop_music :: proc(w: ^World) {
 	w.music = nil
 	delete(w.music_name)
 	w.music_name = ""
+	w.music_volume, w.music_duck = 0, 1
+	clear_music_places(w)
+}
+
+// How fast the words duck the music, a frame at a time: a third of a second.
+DUCK_STEP :: f32(1) / 20
+
+// Where the music is coming from, when it is coming from somewhere: a
+// gramophone in a bar, a band on a lawn, a wireless through a wall. In
+// `room` it is `near` loud standing at `at`, `far` loud `reach` away and
+// further, and in between in proportion, and it leans to the side it is on;
+// `reach` 0 is the whole room at `near`.
+Music_Place :: struct {
+	room:  string,
+	at:    [2]f32,
+	near:  f32,
+	far:   f32,
+	reach: f32,
+}
+
+// The music playing now comes from these places, instead of being the same
+// loud everywhere: the volume play_music was given goes, and in a room with
+// no place it is `elsewhere` loud (0: not heard, though it goes on, so it is
+// further on when she comes back). Walking through the door does not start
+// the record again. Gone with the music (stop_music, or another play_music).
+//
+//     ne.play_music(w, "bar_record", loop = true)
+//     ne.music_from(w, {{room = "bar", at = {460, 420}, near = 0.6, far = 0.4, reach = 600},
+//                       {room = "quay", at = {177, 590}, near = 0.4, far = 0.08, reach = 800}}, 0.04)
+music_from :: proc(w: ^World, places: []Music_Place, elsewhere: f32 = 0) {
+	clear_music_places(w)
+	for p in places {
+		q := p
+		q.room = strings.clone(p.room)
+		append(&w.music_places, q)
+	}
+	w.music_elsewhere = elsewhere
+}
+
+@(private)
+clear_music_places :: proc(w: ^World) {
+	for p in w.music_places do delete(p.room)
+	clear(&w.music_places)
+	w.music_elsewhere = 0
+}
+
+// How loud the music is now, and how far to one side: its volume, or where
+// it is coming from (music_from), ducked as far as the words have it.
+music_level :: proc(w: ^World) -> (volume, pan: f32) {
+	volume = w.music_volume
+	if len(w.music_places) > 0 {
+		volume = w.music_elsewhere
+		here := current_scene(w).name if len(w.scenes) > 0 else ""
+		for p in w.music_places {
+			if p.room != here do continue
+			volume = p.near
+			if p.reach > 0 {
+				d := p.at - w.player.pos
+				volume = p.near + (p.far - p.near) * clamp(length(d) / p.reach, 0, 1)
+				pan = clamp(d.x / p.reach, -0.6, 0.6)
+			}
+			break
+		}
+	}
+	volume *= duck_gain(w, w.music_duck)
+	return
+}
+
+@(private)
+duck_gain :: proc(w: ^World, duck: f32) -> f32 {
+	return 1 + (duck - 1) * w.ducked
+}
+
+// A cue over the music: a ride's theme, a sting, a death. The music playing
+// is held where it is (paused, not stopped), and comes back from there when
+// the cue is over: by itself, for one that plays once, or at stop_over. A
+// new cue over a cue replaces it and keeps the same music held. play_music
+// and stop_music under it change what comes back, and leave the cue alone,
+// so the hour can move the music on while a ride is under way.
+//
+//     ne.play_over(w, "ride_theme", loop = true)   // RIDE
+//     ne.stop_over(w, "ride_theme")                // GET UP: back to the night
+//
+// A new game and a restore stop it, with the music.
+play_over :: proc(w: ^World, name: string, loop := false, volume: f32 = 1, duck: f32 = 1) {
+	if w.assets == nil do return
+	m := assets_loop(w.assets, name)
+	if m == nil || m == w.music do return
+	if w.over != nil {
+		rl.StopMusicStream(w.over.music)
+		delete(w.over_name)
+	} else if w.music != nil {
+		hold_stream(w.music)
+	}
+	m.music.looping = loop
+	w.over = m
+	w.over_name = strings.clone(name)
+	w.over_volume, w.over_duck = volume, duck
+	w.over_from, w.over_secs = w.time, rl.GetMusicTimeLength(m.music)
+	loop_volume(m, volume * duck_gain(w, duck))
+	stream_from_the_top(m)
+	hear(w, name, volume) // for `!sound`: the harness plays a cue out at once
+}
+
+// The cue over the music ends now (`name`: only if it is that one), and the
+// music it held goes on from where it was.
+stop_over :: proc(w: ^World, name := "") {
+	if w.over == nil || (name != "" && name != w.over_name) do return
+	rl.StopMusicStream(w.over.music)
+	w.over = nil
+	delete(w.over_name)
+	w.over_name = ""
+	if w.music != nil && w.music.music.stream.buffer != nil do rl.ResumeMusicStream(w.music.music)
+}
+
+// A cue that plays once is over when it has played: by the play clock, which
+// the harness can move, or when raylib says it has finished.
+@(private)
+over_done :: proc(w: ^World) -> bool {
+	o := w.over
+	if o.music.looping do return false
+	if w.time - w.over_from >= w.over_secs do return true
+	return o.music.stream.buffer != nil && !rl.IsMusicStreamPlaying(o.music)
+}
+
+// What is heard of the music now: the cue over it if there is one, or the
+// music, or "".
+music_heard :: proc(w: ^World) -> string {
+	return w.over_name if w.over != nil else w.music_name
+}
+
+// From the top. raylib's seek writes to the stream's buffer, which a stream
+// opened with no audio device does not have.
+@(private)
+stream_from_the_top :: proc(m: ^Loop) {
+	if m.music.stream.buffer != nil do rl.SeekMusicStream(m.music, 0)
+	rl.PlayMusicStream(m.music)
+}
+
+@(private)
+hold_stream :: proc(m: ^Loop) {
+	if m.music.stream.buffer != nil do rl.PauseMusicStream(m.music)
 }
 
 // A bed: one sound under every room, wherever she goes, that the game keeps
@@ -364,7 +530,7 @@ sound_report :: proc(w: ^World) -> string {
 	}
 	fmt.sbprintf(&b, "ambience %v; loops %v; music %v; bed ", ambience,
 		strings.join(loops[:], ", ", context.temp_allocator) if len(loops) > 0 else "none",
-		w.music_name if w.music_name != "" else "none")
+		music_said(w))
 	if w.bed_name != "" do fmt.sbprintf(&b, "%v at %.2f", w.bed_name, w.bed_volume)
 	else do strings.write_string(&b, "none")
 	strings.write_string(&b, "; played ")
@@ -376,6 +542,22 @@ sound_report :: proc(w: ^World) -> string {
 	}
 	forget_heard(w)
 	return strings.to_string(b)
+}
+
+// The music for `!sound`: its name, how loud if not full (where it is coming
+// from, ducked), and the music a cue is holding: `theme at 0.60 over night`.
+@(private)
+music_said :: proc(w: ^World) -> string {
+	name, volume := w.music_name, f32(1)
+	if w.over != nil {
+		name, volume = w.over_name, w.over_volume * duck_gain(w, w.over_duck)
+	} else if w.music != nil {
+		volume, _ = music_level(w)
+	}
+	if name == "" do return "none"
+	said := name if volume == 1 else fmt.tprintf("%v at %.2f", name, volume)
+	if w.over != nil && w.music_name != "" do said = fmt.tprintf("%v over %v", said, w.music_name)
+	return said
 }
 
 // --- Baking ---

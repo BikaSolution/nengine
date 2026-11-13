@@ -26,6 +26,13 @@ import rl "vendor:raylib"
 // time here is what happens in the game.
 WALK_SPEED :: f32(190)
 
+// How fast cast member `i` walks: their own `speed=` (a cart, an aeroplane),
+// or the walking speed, as the engine has it (ne.cast_speed).
+member_speed :: proc(e: ^Editor, i: int) -> f32 {
+	if i < 0 || i >= len(e.doc.people) do return WALK_SPEED
+	return ne.cast_speed(e.doc.people[i].m)
+}
+
 // Who a cast member is, as the engine will work it out when it plays
 // (cutscene.odin, start_cutscene): somebody standing in the room by that name,
 // or failing that wearing that .char; what they wear; where they start.
@@ -120,7 +127,7 @@ person_walk :: proc(e: ^Editor, who: int, t: f32) -> (pos: [2]f32, heading: [2]f
 		q := e.doc.cues[i].q
 		if q.at > t do break
 		if q.action != .Walk_To || q.who != name do continue
-		took := rl.Vector2Length(q.to - pos) / WALK_SPEED
+		took := rl.Vector2Length(q.to - pos) / member_speed(e, who)
 		if took <= 0.001 {
 			pos = q.to
 			continue

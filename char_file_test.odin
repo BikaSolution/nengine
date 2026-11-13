@@ -131,3 +131,81 @@ the_extras_are_the_poses_beyond_the_ten :: proc(t: ^testing.T) {
 	testing.expect_value(t, len(again), 2)
 	testing.expect_value(t, strings.concatenate({again[0], ",", again[1]}, context.temp_allocator), "steps,sit_chair")
 }
+
+@(test)
+a_walk_with_a_step_plays_as_fast_as_it_moves :: proc(t: ^testing.T) {
+	// `step=` survives the file both ways, and a part without it has none.
+	text := "character stride\nsize 4 4\npal # 0,0,0,255\npart walk_right frames=4 fps=8 step=13\nframe 0\n####\n####\n####\n####\nframe 1\n####\n####\n####\n####\nframe 2\n####\n####\n####\n####\nframe 3\n####\n####\n####\n####\npart front frames=1\nframe 0\n####\n####\n####\n####\n"
+	c, ok := parse_character(text)
+	testing.expect(t, ok)
+	defer character_destroy(&c)
+	testing.expect_value(t, character_part(&c, "walk_right").step, 13)
+	testing.expect_value(t, character_part(&c, "front").step, 0)
+	again, ok2 := parse_character(character_text(&c))
+	testing.expect(t, ok2)
+	defer character_destroy(&again)
+	testing.expect_value(t, character_part(&again, "walk_right").step, 13)
+
+	// Two strides a cycle: 190 canvas px/s at 3.2 over 13 px strides is
+	// 190 / 83.2 = 2.28 cycles, 9.1 frames a second for a four-frame walk.
+	s := Sprite{frames = 4, scale = 3.2}
+	rate := walk_rate(190, 13, s)
+	testing.expect(t, rate > 9.1 && rate < 9.2)
+	// Half the speed, half the rate: the feet stay planted at any speed.
+	testing.expect(t, abs(walk_rate(95, 13, s) - rate / 2) < 0.001)
+}
+
+// An extra pose never mirrors, so a man carrying a sack drawn facing left
+// would walk backwards to the right. A pose may be drawn again for a facing,
+// `sack_right`, and is used while facing that way; without one, the pose.
+@(test)
+a_pose_drawn_for_a_facing_is_used_that_way :: proc(t: ^testing.T) {
+	art := Character_Art{name = "porter"}
+	defer delete(art.parts)
+	art.parts["sack"] = Part_Art{sprite = Sprite{texture = {id = 1}, frames = 4}}
+	art.parts["sack_right"] = Part_Art{sprite = Sprite{texture = {id = 2}, frames = 4}}
+	a := Actor{character = &art, pose = "sack", facing = .Left}
+	s, _, _ := actor_picture(a)
+	testing.expect_value(t, s.texture.id, 1)
+	a.facing = .Right
+	s, _, _ = actor_picture(a)
+	testing.expect_value(t, s.texture.id, 2)
+	a.facing = .Front
+	s, _, _ = actor_picture(a)
+	testing.expect_value(t, s.texture.id, 1)
+	// Played, too: a kick at a dog on the left is the kick drawn facing left.
+	art.parts["kick"] = Part_Art{sprite = Sprite{texture = {id = 3}, frames = 2}, fps = 4}
+	art.parts["kick_left"] = Part_Art{sprite = Sprite{texture = {id = 4}, frames = 3}, fps = 4}
+	a.pose = ""
+	a.facing = .Left
+	actor_play(&a, "kick")
+	s, _, _ = actor_picture(a)
+	testing.expect_value(t, s.texture.id, 4)
+	testing.expect_value(t, actor_part_secs(&a, "kick"), 0.75)
+	a.facing = .Right
+	s, _, _ = actor_picture(a)
+	testing.expect_value(t, s.texture.id, 3)
+	free_all(context.temp_allocator)
+}
+
+// A walk part held as somebody's pose while they stand still stands on its
+// first passing frame instead of walking on the spot; walking, it walks.
+@(test)
+a_walk_held_standing_still_stands :: proc(t: ^testing.T) {
+	art := Character_Art{name = "ranger"}
+	defer delete(art.parts)
+	art.parts["lamp_walk"] = Part_Art{sprite = Sprite{texture = {id = 1}, frames = 4, scale = 3.2}, fps = 8, step = 8}
+	a := Actor{character = &art, pose = "lamp_walk", facing = .Left, speed = 120}
+	for t_ in ([]f32{0, 0.3, 0.7, 1.9}) {
+		a.anim_time = t_
+		_, frame, _ := actor_picture(a)
+		testing.expect_value(t, frame, 1)
+	}
+	a.walking = true
+	a.anim_time = 0
+	_, f0, _ := actor_picture(a)
+	a.anim_time = 0.15
+	_, f1, _ := actor_picture(a)
+	testing.expect(t, f0 != f1, "walking, the frames go round")
+	free_all(context.temp_allocator)
+}

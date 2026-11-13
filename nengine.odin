@@ -205,6 +205,16 @@ draw_canvas :: proc(w: ^World) {
 		if w.overlay.draw != nil do w.overlay.draw(w)
 		return
 	}
+	// A cutscene's painted shot, the same way (cutscene.odin).
+	if cutting(w) {
+		if shot, frame, ok := cut_shot_sprite(&w.cut, w); ok {
+			rl.ClearBackground(rl.BLACK)
+			draw_sprite(shot, frame, {f32(WIDTH) / 2, f32(shot.frame_h)})
+			draw_world_top(w)
+			if w.overlay.draw != nil do w.overlay.draw(w)
+			return
+		}
+	}
 	draw_world(w)
 	draw_menu_bar(w) // over the room, while the pointer is at the top (menubar.odin)
 	// Last, over the room and the prompt, inside the canvas so it scales and

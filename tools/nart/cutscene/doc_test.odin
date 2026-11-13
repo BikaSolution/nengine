@@ -306,3 +306,48 @@ a_note_after_a_cue_is_kept :: proc(t: ^testing.T) {
 	testing.expect_value(t, d.lines[4], "14.00 warden face back   to the gate")
 	testing.expect_value(t, d.lines[5], "15.00 warden play wave once  waves, twice")
 }
+
+// A line cue's `shot=` and `frames=` are its own, written with its words and
+// not kept again as a note; a `shot` cue keeps the note after it, frame or
+// no frame; a cast member's `speed=` is read.
+@(private = "file")
+SHOT_NOTED :: `cut shots
+cast cart char=cart at=-80,500 speed=60
+2.00 line A1.ROAD 1-4 shot=two_shot frames=0,1   the road
+3.00 shot wide 2   from the hill
+4.00 shot wide  from the road
+5.00 shot off  back to the room
+`
+
+@(test)
+a_shot_keeps_its_fields_and_its_note :: proc(t: ^testing.T) {
+	d: Cut_Doc
+	defer doc_destroy(&d)
+	doc_set_text_all(&d, SHOT_NOTED)
+	testing.expect_value(t, doc_text(&d), SHOT_NOTED)
+	testing.expect_value(t, len(d.cues), 4)
+	testing.expect_value(t, d.people[0].m.speed, f32(60))
+	testing.expect_value(t, cue_note(d.lines[2], d.cues[0].q), "   the road")
+	testing.expect_value(t, cue_note(d.lines[3], d.cues[1].q), "   from the hill")
+	testing.expect_value(t, cue_note(d.lines[4], d.cues[2].q), "  from the road")
+	testing.expect_value(t, cue_note(d.lines[5], d.cues[3].q), "  back to the room")
+
+	set :: proc(d: ^Cut_Doc, line: int, change: proc(q: ^ne.Cue)) {
+		i := doc_cue_at_line(d, line)
+		q := d.cues[i].q
+		change(&q)
+		doc_set_cue(d, i, q)
+	}
+	set(&d, 2, proc(q: ^ne.Cue) {q.lines = {1, 6}})
+	testing.expect_value(t, d.lines[2], "2.00 line A1.ROAD 1-6 shot=two_shot frames=0,1   the road")
+	set(&d, 3, proc(q: ^ne.Cue) {q.frame = 0})
+	testing.expect_value(t, d.lines[3], "3.00 shot wide   from the hill")
+	set(&d, 4, proc(q: ^ne.Cue) {q.frame = 1})
+	testing.expect_value(t, d.lines[4], "4.00 shot wide 1  from the road")
+	c, _ := ne.parse_cutscene(doc_text(&d))
+	defer ne.cutscene_destroy(&c)
+	testing.expect_value(t, c.cues[0].lines, [2]int{1, 6})
+	testing.expect_value(t, len(c.cues[0].frames), 2)
+	testing.expect_value(t, c.cues[1].frame, i32(0))
+	testing.expect_value(t, c.cues[2].frame, i32(1))
+}

@@ -223,6 +223,11 @@ load_world :: proc(w: ^World, text: string) -> bool {
 	set_earned_text(w, save_text(&s, "earned"))
 	notebook_load(w, &s)
 	ride_load(w, &s)
+	// The music was the moment, and the moment is gone, a cue over it too;
+	// before the clock, so that `on_clock` says what plays at the hour
+	// restored to (a bed under the night), and it is not stopped after.
+	stop_over(w)
+	stop_music(w)
 	// After the flags, so `on_clock` sets its own on top of what the save
 	// restored rather than being overwritten by it.
 	set_clock(w, save_int(&s, "clock"))
@@ -246,7 +251,6 @@ load_world :: proc(w: ^World, text: string) -> bool {
 	// twenty seconds from landing, not a question waiting for an answer, not
 	// a conversation half read.
 	clear(&w.timers)
-	stop_music(w) // a cue was the moment, and the moment is gone
 	w.pending = ""
 	if talking(w) do end_conversation(w)
 	abandon_cutscene(w) // and not a cutscene half played

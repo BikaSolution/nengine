@@ -281,6 +281,21 @@ World :: struct {
 	assets:        ^Assets,
 	music:         ^Loop,
 	music_name:    string,
+	music_volume:  f32, // as play_music asked, before music_from and the duck
+	music_duck:    f32, // how loud, of itself, under words: 1 never ducks
+	// Where it is coming from (music_from), and how loud it is in a room
+	// none of the places is in. None: the same everywhere.
+	music_places:    [dynamic]Music_Place,
+	music_elsewhere: f32,
+	// A cue over the music (play_over), which holds the music where it was
+	// until it is over: from w.time `over_from`, `over_secs` long.
+	over:          ^Loop,
+	over_name:     string,
+	over_volume:   f32,
+	over_duck:     f32,
+	over_from:     f32,
+	over_secs:     f32,
+	ducked:        f32, // 0 to 1: how far under the words the music is now
 	// A bed under every room (play_bed): its own stream, so a room that
 	// plays the same sound as its ambience never stops it. See audio.odin.
 	bed:           Loop,
@@ -335,7 +350,9 @@ destroy_world :: proc(w: ^World) {
 	delete(w.accusations)
 	delete(w.scenes)
 	stop_bed(w)
+	stop_over(w)
 	stop_music(w)
+	delete(w.music_places)
 	forget_heard(w)
 	delete(w.heard)
 	clear_cut_handoff(w)

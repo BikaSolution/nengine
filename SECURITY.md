@@ -8,8 +8,7 @@ Report it privately through GitHub:
 [Security → Report a vulnerability](https://github.com/BikaSolution/nengine/security/advisories/new).
 
 Include what you found, how to reproduce it (a crafted asset, save or script
-file is ideal), and what it lets an attacker do. We aim to acknowledge reports
-within a week.
+file is ideal), and what it lets an attacker do.
 
 ## Scope
 

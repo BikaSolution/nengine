@@ -125,3 +125,62 @@ an_objects_frame_survives_being_written :: proc(t: ^testing.T) {
 	free_scene_strings(&back)
 	delete(back.objects); delete(back.exits); delete(back.triggers); delete(back.walk_area); delete(back.scenery); delete(back.said)
 }
+
+// A layer drifting over the backdrop: read, and written back as it was read,
+// so the room editor saves what it loaded.
+@(test)
+a_drifting_layer_survives_being_written :: proc(t: ^testing.T) {
+	w := rooms(t, "scene shore\nbg shore\ndrift clouds speed=6 y=0\ndrift water speed=24.5 y=300 fps=5\nwalk 0,0 10,0 10,10\n")
+	defer tidy_rooms(&w)
+	sc := &w.scenes[0]
+	testing.expect_value(t, len(sc.drifts), 2)
+	testing.expect_value(t, sc.drifts[0].name, "clouds")
+	testing.expect_value(t, sc.drifts[0].layer.speed, f32(6))
+	testing.expect_value(t, sc.drifts[0].layer.fps, f32(0))
+	testing.expect_value(t, sc.drifts[1].name, "water")
+	testing.expect_value(t, sc.drifts[1].layer.speed, f32(24.5))
+	testing.expect_value(t, sc.drifts[1].layer.y, f32(300))
+	testing.expect_value(t, sc.drifts[1].layer.fps, f32(5))
+	text := scene_text(sc)
+	testing.expect(t, strings.contains(text, "bg shore\ndrift clouds speed=6 y=0\ndrift water speed=24.5 y=300 fps=5\n"), text)
+	back, ok := parse_scene(text, nil)
+	testing.expect(t, ok)
+	testing.expect_value(t, len(back.drifts), 2)
+	testing.expect_value(t, scene_text(&back), text)
+	free_scene_strings(&back)
+	delete(back.objects); delete(back.exits); delete(back.triggers); delete(back.walk_area); delete(back.scenery); delete(back.said)
+}
+
+// Its paintings are found as a backdrop's are, one for each light it was
+// painted in, and it drifts and plays as a title screen's layer does.
+@(test)
+a_drifting_layer_is_painted_for_each_light_and_drifts :: proc(t: ^testing.T) {
+	a: Assets
+	a.sprites = make(map[string]Sprite)
+	defer delete(a.sprites)
+	a.sprites["water"] = Sprite{frame_w = 320, frame_h = 5, frames = 3}
+	a.sprites["water.night"] = Sprite{frame_w = 320, frame_h = 7, frames = 3}
+	s, ok := parse_scene("scene shore\ndrift water speed=24 y=300 fps=5\n", &a)
+	testing.expect(t, ok)
+	d := s.drifts[0]
+	testing.expect_value(t, d.lit.painted, bit_set[Light]{.Day, .Night})
+	testing.expect_value(t, d.lit.by[.Night].frame_h, 7)
+	testing.expect_value(t, d.lit.by[.Sunset].frame_h, 5) // not painted for it: borrows the day's
+	testing.expect_value(t, d.layer.sprite.frame_h, 5)
+
+	// Left at its speed, and round again after a whole width with no gap.
+	l := d.layer
+	testing.expect_value(t, layer_offset(0, l.speed, 320), 0)
+	testing.expect_value(t, layer_offset(1, l.speed, 320), -24)
+	testing.expect_value(t, layer_offset(14, l.speed, 320), -16) // 336 gone: a width and 16
+	for i in 0 ..< 500 {
+		o := layer_offset(f32(i) * 0.113, l.speed, 320)
+		testing.expectf(t, o <= 0 && o > -320, "offset %v out of range", o)
+	}
+	// Its three frames, five a second.
+	testing.expect_value(t, layer_frame(l, 0.2), 1)
+	testing.expect_value(t, layer_frame(l, 0.65), 0)
+
+	free_scene_strings(&s)
+	delete(s.objects); delete(s.exits); delete(s.triggers); delete(s.walk_area); delete(s.scenery); delete(s.said)
+}

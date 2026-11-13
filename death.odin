@@ -16,6 +16,9 @@ Death :: struct {
 	reason:   string,       // the one-liner in the box
 	portrait: Sprite,       // the aftermath, drawn in the box
 	jingle:   rl.Sound,     // plays as the box opens
+	music:    string,       // a cue by name over everything as the box opens
+	                        // (play_over): the music under it is held, and a
+	                        // restore or a new game ends both
 
 	// Called every frame while the death plays. t is seconds since it
 	// started; last is what t was on the previous frame. Return true when
@@ -92,11 +95,18 @@ advance_death :: proc(w: ^World, dt: f32) {
 	last := w.death_time
 	w.death_time += dt
 	done := w.death.update == nil || w.death.update(w, w.death_time, last)
-	if done {
-		w.death_box = true
-		stop_scene_audio(current_scene(w))
-		play(w.death.jingle)
-	}
+	if done do open_death_box(w)
+}
+
+// The death is over and the box comes up: the room goes quiet, and the
+// jingle and the death's music play. The harness, which has no frames to
+// play a death out in, opens it at once (script.odin).
+@(private)
+open_death_box :: proc(w: ^World) {
+	w.death_box = true
+	stop_scene_audio(current_scene(w))
+	play(w.death.jingle)
+	if w.death.music != "" do play_over(w, w.death.music)
 }
 
 @(private)

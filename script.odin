@@ -311,11 +311,17 @@ run_on :: proc(w: ^World) {
 		case w.dead && !w.death_box:
 			// No frames to play the death out in: say it, and stop there.
 			fmt.printfln("  [dead: %v]", w.death.reason)
-			w.death_box = true
+			open_death_box(w)
 		case w.passer.phase == .Waiting && !w.passer.forced:
 			// Somebody the room rolled for goes past now, as a walk is
 			// finished at once (passer.odin). Seen, and nothing more.
 			if said, ok := passer_walk_out(w); ok do fmt.printfln("  %v", said)
+		case w.over != nil && !w.over.music.looping:
+			// A cue that plays once (play_over) plays out, as its frames
+			// would, and the music it held comes back; `!sound` has it among
+			// what was played. A looping one waits, as a ride's does.
+			fmt.printfln("  [cue %v]", w.over_name)
+			stop_over(w)
 		case:
 			moved = false
 		}
@@ -525,7 +531,7 @@ bang :: proc(w: ^World, line: string, on_bang: Bang) -> string {
 		return status_report(w)
 
 	case "hold":
-		// !hold Odu: the next conversation read out stops on the line that
+		// !hold Abel: the next conversation read out stops on the line that
 		// says it, and stays up for the frames after the script.
 		if arg == "" do return "hold on which line?"
 		if w.script_hold != "" do delete(w.script_hold)

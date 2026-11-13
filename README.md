@@ -147,7 +147,7 @@ for ... {
 }
 ```
 
-Each `Layer` is a sprite (`sprite = assets.sprites["title_sky"]`) at least as wide as the screen whose left and right edges join up. It has a speed in pixels per second: 0 for the sky, a little for distant hills, more for the street. Up/Down (or numpad 8/2) and Enter choose; so does the mouse. `extra` draws anything else over the layers, like something driving by.
+Each `Layer` is a sprite (`sprite = assets.sprites["title_sky"]`) at least as wide as the screen whose left and right edges join up. It has a speed in pixels per second: 0 for the sky, a little for distant hills, more for the street. A layer of several frames with an `fps` plays them in a loop, with their holds, as a sprite does: moving water (`layer_frame`). A room can have drifting layers too (Drifting layers, below). Up/Down (or numpad 8/2) and Enter choose; so does the mouse. `extra` draws anything else over the layers, like something driving by.
 
 **The lettering** is up to five lines, any of them left out: a small
 `overline` over the title (who the story is about: "Ada Westcott in"), the
@@ -247,6 +247,7 @@ ne.die(w, ne.Death {
     reason   = "You looked both ways. Unfortunately, you did it afterwards.",
     portrait = assets.sprites["road_death"], // a Sprite, shown in the box
     jingle   = sfx.trombone,    // plays as the box opens
+    music    = "death_theme",   // a cue by name over the music as the box opens (play_over)
     update   = crash_update,    // every frame: proc(w, t, last) -> done
     draw     = crash_draw,      // every frame: proc(w, t), over the scene
 })
@@ -310,8 +311,9 @@ The comic (look.odin) draws everything the engine says in it:
 - **Speech** is a balloon with a black line round it, at the top of the
   screen on the speaker's side: their name over the words in red, stage
   directions — whatever is in brackets — in dark grey, and their portrait in
-  a small inset panel on the balloon's left, on a yellow ground. There is no
-  tail. The side is where they stand: the player, or an object in the room
+  an inset panel on the balloon's left, on a yellow ground. The panel is as
+  big as the portrait (44x52 art pixels is the classic size; a 60x72 bust gets
+  a 60x72 panel and the balloon steps over it). There is no tail. The side is where they stand: the player, or an object in the room
   whose name or `.char` answers to the speaker's name (the whole of it or its
   last word, as `speaker_named` reads it). Somebody standing in the middle of
   the floor, or nowhere on screen, goes by `Speaker.side`, so two people
@@ -648,7 +650,10 @@ hours and whether it was heard.
 | `ambience when=night camp_night` | A room's sound by the hour, like `desc when=`: the last line whose condition holds. It changes mid-room when a flag does — the generator stopping. |
 | `footstep step_boards` | The floor's own footstep, instead of the player's. |
 | `play_sound(w, name)` | One of the game's sounds by name, once (`World.assets` must be set). Silent if there is none. |
-| `play_music(w, name, loop)` | Music over the room, streamed from its file: a cue once, or a bed until `stop_music`. A new game and a restore stop it. |
+| `play_music(w, name, loop, volume, duck)` | Music over the room, streamed from its file: a cue once, or a bed until `stop_music`. `duck` is how loud it goes, of itself, while a conversation is up (an eavesdrop is one), eased over a third of a second: 1 never ducks, 0.4 is a bed that gets out of the way of the words. Started under a cue (`play_over`) it waits, held. A new game and a restore stop it, before `on_clock`, which says what plays at the hour restored to. |
+| `music_from(w, places, elsewhere)` | The music playing now comes from somewhere (`Music_Place`: a room, a point in it, how loud `near` it and `far` at `reach` pixels and beyond, leaning to its side), instead of the same everywhere: a gramophone in a bar, heard through its door on the quay. In a room with no place it is `elsewhere` loud (0: not heard, and still going, so the record has moved on when she comes back). Walking through the door never starts it again. Goes with the music. |
+| `play_over(w, name, loop, volume, duck)`, `stop_over(w, name)` | A cue over the music: a ride's theme, a sting, a death. The music is held where it is, paused, and goes on from there when the cue is over: by itself for one that plays once (by the play clock, or when raylib says it has finished), or at `stop_over` (with a name, only if that is the one up). A cue over a cue replaces it. `play_music` and `stop_music` under it change what comes back and leave the cue alone, so the hour can move the music on while a ride is under way. `music_heard` is the name heard now. A new game and a restore stop it. |
+| `Death.music` | A cue by name over everything as the death box opens (`play_over`): the music under it is held, and a restore or a new game ends both. |
 | `play_bed(w, name, volume)` | One sound under every room, wherever she walks, kept by the game from `on_clock`: an aeroplane coming in, a storm getting up. The same name again only changes how loud, so it can build a tick at a time; `stop_bed` (or `""`) ends it. Its own stream, so a room with the same sound as its ambience neither stops it nor sets its volume (the bed is quiet in that room, which plays it nearer), and music over it leaves it alone. A new game stops it; a restore leaves it to `on_clock`. |
 | `Beat.sound` | Played as the beat starts: the shot, the triangle, the engine dying. |
 | `Menu.music` | The title theme, streamed, while the menu is up. |
@@ -823,6 +828,40 @@ The other way — **taken since** (1 Nov 2026), once the rooms were painted from
 a world model that knows every pixel's depth — is a Sierra priority map: the
 next section. Splitting still works, and a room with no maps is drawn exactly
 as this section says.
+
+### Drifting layers: parallax in a room
+
+A room can move as the title screen does: layers over its backdrop that drift
+left and repeat sideways, for clouds, smoke, a river's water, the land going
+past a window.
+
+```text
+bg river_bank
+drift clouds speed=6 y=0
+drift water  speed=24 y=300 fps=5
+```
+
+- **`drift <sprite> speed=<px/s> y=<y> [fps=<n>]`.** The sprite's top edge
+  sits at `y`, it moves left `speed` canvas pixels a second (0 stays put), and
+  copies of it are laid side by side across the screen, so its left and right
+  edges should join up. A sprite of several frames with an `fps` plays them in
+  a loop, with their holds: water moving as well as flowing.
+- **Drawn over the backdrop and under everything in the room**, back to front
+  in the order the file gives them. Nobody and nothing is ever behind one, so
+  a layer is for what is farther away than anybody stands, or for what lies
+  under their feet; something that stands in front of people is an object.
+- **The same drawing as the title screen's** (`Layer`, `draw_layer`,
+  `layer_offset`, `layer_frame` in menu.odin): what drifts on the title
+  drifts the same way in a room. The clock is the World's `time`, which runs
+  on through conversations and cutscenes.
+- **In every light, as a backdrop is** (light.odin): `water.night` beside
+  `water` is the night's painting, found by the name on the line. A light it
+  was not painted for borrows another's painting and is shown through the
+  room's tint. The `.sprite` is used first, so its frames come with it, and a
+  baked `.png` of that name failing that.
+- **Saved as read.** `scene_text` writes each `drift` line after the `bg`
+  line, and the room editor keeps the file's own lines, so a room opened and
+  saved keeps its layers.
 
 ## Depth and solid maps: Sierra's priority and control screens
 
@@ -2102,7 +2141,7 @@ A line starting `!` is the harness talking to the game. The engine's:
 | `!typing <words>` | leave words in the typing line, unsent: a `--shot` of the prompt with a command half typed |
 | `!cuts` | every cutscene loaded: `<name>: <secs>s in <room>, <n> cast, <n> cue(s), <n> line(s)` |
 | `!cut <name>` | play one here, as `play_cutscene` would; it prints `[cutscene <name>]`, its lines, `[end <name>]` |
-| `!sound` | what she can hear: `ambience <name>; loops <the loops of what is here>; music <name>; bed <name> at <volume>; played <every sound played since the last !sound>` — a name with no baked file behind it is `(silent: no such sound)`, and one played several times running is `<name> x<n>` |
+| `!sound` | what she can hear: `ambience <name>; loops <the loops of what is here>; music <name>; bed <name> at <volume>; played <every sound played since the last !sound>` — a name with no baked file behind it is `(silent: no such sound)`, and one played several times running is `<name> x<n>`. The music is the cue over it if there is one, with how loud if not full (where it comes from, ducked) and what it holds: `music kite at 0.60 over night`. A cue that plays once (`play_over`) is played out at once, as its frames would, printing `[cue <name>]`, and is among the played |
 | `!stand x,y [facing]` | put her there, no walking |
 | `!people` | everybody drawn here: `name x,y [pose]`, and `(coming)` or `(going)` while they walk on or off through a side, at the place they are going to or from; `nobody` (probe.odin) |
 | `!put <obj>[/n] x,y` | move an object or a person (`/n`: the nth line of that name) |
@@ -2114,7 +2153,7 @@ A line starting `!` is the harness talking to the game. The engine's:
 | `!sheet <path> [cols=N] [scale=F]` / `!sheet end` | the pictures in between go on one labelled contact sheet |
 | `!bar [hover <item> \| <item> [row] \| off]` | the menu bar held down for a shot, an item picked out, or an item run as a click would; with a row, the pointer on that row of the screen it opens |
 | `!screen [<n> \| hover <n> \| esc]` | the bar's screen that is up, as text; row n clicked (from 1), or under the pointer; Esc |
-| `!title [at=F] [about] [load [n]]` | the title screen instead of play, for a `--shot`: its dusk held F of the way to night (0 to 1), its About page up, its Load screen up and row n picked, which goes into that save and prints where she is (menu.odin, launch.odin) |
+| `!title [at=F] [about] [load [n]]` | the title screen instead of play, for a `--shot`: its dusk held F of the way to night (0 to 1), its About page up, its Load screen up and row n picked, which goes into that save and prints where she is (menu.odin, launch.odin); its report ends `; music, <seconds> s` when the title has music |
 | `!click x,y` / `!arrow <dir> [secs]` | a click in the room, or an arrow key tapped, walked out: `walked to x,y`, `over the edge <name>`, `crossed <dir> to <room> at x,y`, or `went to <room>` (edge.odin) |
 | `!sides` | the room's sides: where each goes, its span and brink, its gate (open or SHUT and what it says), hidden, a long walk, or its partner (`partner ok` / `NO PARTNER`) (side_harness.odin) |
 | `!cross <dir> [at=c] [by=go\|arrow\|click]` | across that side, walked out: as GO NORTH (the default), the arrow key from a step in, or a click just beyond the brink; `at=` is where along it |
@@ -2343,8 +2382,9 @@ Times are seconds from the start, and a cue fires when the clock passes it.
 Nothing waits for anything else — a cutscene is timed, not programmed, which
 is what makes it readable down the left-hand column and drawable as a
 timeline. A cue may walk somebody, turn them, have them speak or think, say a
-line of narration, say a dialogue node's lines, shake the camera, name a
-sound, or end the thing; anything more belongs to a trigger.
+line of narration, say a dialogue node's lines, put up a painted shot, shake
+the camera, name a sound, or end the thing; anything more belongs to a
+trigger.
 
 **`line` says a node's lines, so a cutscene never copies the script.** The
 words stay in the writers' Markdown (Dialogue nodes, above) and the cut says
@@ -2399,6 +2439,61 @@ from the direction. **A walk is a straight line at `CUT_SPEED` (190), through
 anything**: that is what the cutscene editor draws and times, so what you time
 there is what plays, and somebody can walk in from off the edge of the floor.
 Pick walks that look right in the room; the floor does not check them.
+
+**Somebody's own speed: `speed=` on the `cast` line**, in canvas pixels a
+second, for whoever does not go at a walk — a cart, a boat, an aeroplane
+crossing the sky, which are characters like anybody else, a walk of turning
+wheels or propellers:
+
+```text
+cast cart  char=cart  at=-80,500 speed=60
+cast plane char=plane at=1100,90 speed=320
+0.00 cart  walk_to 1100,500
+2.00 plane walk_to -200,70
+```
+
+- Without it, `CUT_SPEED`; `cast_speed(m)` is the one in force. The player
+  and the room's people walk at it while the cut plays and at their own
+  again after, as they do at `CUT_SPEED`.
+- A part drawn with `step=` keeps its feet (or its wheels) with the ground at
+  any speed (`walk_rate`, actor.odin), so a slow cart's wheels turn slowly.
+- The cutscene editor times a walk at the walker's own speed too.
+
+### A painted shot
+
+A cutscene can show its lines over a painted picture, as a conversation's
+close-up does (`Talk_Line.shot`): the room is not drawn while it is up, and
+the boxes go over it with the speakers named on them, not pictured, because
+their faces are the picture.
+
+```text
+0.00 shot street_wide
+2.00 line A1.ROAD 1-6 shot=road_two_shot frames=0,1,0,1,2
+14.0 shot off
+```
+
+- **`<t> shot <sprite> [<frame>]` puts one up**, on that frame (0 without
+  one), and **`<t> shot off` takes it down.** It stays up until then, or
+  until another shot, or the end of the cut; `say`, `think`, `narrate` and
+  `line` cues between are said over it.
+- **A `line` cue can name its own: `shot=<sprite>`**, put up with its first
+  line, **and `frames=<f>,<f>,...`**, the shot's frame for each of the lines
+  it says in turn: the first frame with the first line, the second with the
+  second, and the last given for every line after (`shot_frame_for`). Who is
+  talking, who is listening: the two-shot's frames. `frames=` without
+  `shot=` changes the frames of the shot already up. The shot stays up after
+  the lines, until a `shot off`, as a `shot` cue's does.
+- **The timing does not change.** Each line still gets `line_secs`, and
+  Enter still jumps to the next: everything between is done as staging,
+  shots and frames included, so the line Enter jumps to goes up in its own
+  frame. Escape and the end take the shot down.
+- **A shot that was never drawn is no shot**: the lines play over the room,
+  so a cut can be timed before its picture is painted. The sprite is found
+  by name in the assets (a `.sprite` of that name), and drawn centred at the
+  top of the canvas, as a conversation's close-up is.
+- `cutscene_shot(w)` says which is up and on which frame. **In the harness**
+  a shot prints as `[shot <sprite>]` when it goes up and `[shot off]` when it
+  comes down (not on each change of frame).
 
 ### In the middle of play
 
@@ -2512,6 +2607,8 @@ changing a lamp's position shows up in git as the one line that changed.
 # room.scene
 scene parlour
 desc A small parlour. There's a hole in the floor.
+bg parlour
+drift smoke speed=6 y=20
 walk 24,122 318,122 318,186 4,186
 ambience house_music
 obj lamp pos=232,158 sprite=lamp fps=6 walk_to=214,162 loop=lamp_hum tick=crackle ticks=5,7 block=circle:10 reach=circle:48
@@ -2576,10 +2673,17 @@ pal # 28,26,32,255
 part front frames=1
 frame 0
 .....#######....
-part walk_left frames=4 fps=8
+part walk_left frames=4 fps=8 step=13
 frame 0
 ...
 ```
+
+`step=` on a walk is how far one stride carries the body, in art pixels (a
+walk's frames cover two strides a cycle). With it, an actor plays the walk as
+fast as it is moving, `speed / (2 * step * scale) * frames` frames a second, so
+a planted foot stays planted at any speed (`walk_rate`, actor.odin). Without it
+the walk plays at its `fps`, or the actor's `walk_fps`, and the feet slide when
+the speed and the stride disagree.
 
 ### Palette modes
 
@@ -2652,6 +2756,16 @@ step moore play wave once      # once through, and the step waits for it
 ```odin
 actor.pose = "sit_chair"   // game code; "" hands it back to the direction walked
 ```
+
+An extra pose is never mirrored either. One that is used facing more than one way can be drawn
+once for each: `sack_right` beside `sack` is what an actor in the pose `sack` shows while facing
+right, and `play kick` on somebody facing left plays `kick_left` when there is one. Without such a
+part, the pose itself shows whichever way they face.
+
+A walking pose held by somebody standing still (`pose=lamp_walk` on a person at a gap) stands on
+its first passing frame, a quarter of the way round, legs together; it walks only while they move.
+A part is a walk when it has a `step=`. Somebody who walks on through a side (`enters=`) turns, once there, to the
+`facing=` of their line, the way they turn to its `pose=`.
 
 The editor lists the ten first and the extras under them, and makes them with
 A (new), D (a copy of the pose you are looking at, which is how most of them

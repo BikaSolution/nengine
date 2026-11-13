@@ -531,8 +531,12 @@ wrap_measured :: proc(text: string, max_width: f32, measure: Measure, allocator 
 @(private) BALLOON_MIN :: 40
 @(private) BALLOON_PAD :: 7     // words in from the balloon's sides
 @(private) BALLOON_LINES :: 4   // more than this and it widens rather than grows
-@(private) INSET_STEP :: 47     // from the inset portrait's left edge to the balloon's
-@(private) INSET_ROOM :: 50     // all the inset takes up, frame and gap
+// The inset is as big as the portrait in it, whatever that is. INSET_SIZE is
+// only the fallback for an ask that names no size (a test, a hand-made ask). The balloon starts 3 past the portrait's right edge, and the
+// inset takes 6 more than the portrait, frame and gap.
+@(private) INSET_SIZE :: [2]f32{44, 52}
+@(private) inset_step :: proc(size: [2]f32) -> f32 {return size.x + 3}
+@(private) inset_room :: proc(size: [2]f32) -> f32 {return size.x + 6}
 @(private) EDGE :: 4            // from the screen's edge
 @(private) EDGE_INSET :: 8      // from the right edge, a balloon with an inset
 @(private) CAPTION_START :: 190
@@ -543,6 +547,7 @@ Balloon_Ask :: struct {
 	text:     string, // the words, without the name
 	name:     string, // over them, in the name colour; "" for none
 	portrait: bool,   // an inset panel with their face
+	portrait_size: [2]f32, // the face in grid pixels; {} is the classic 44x52
 	voice:    bool,   // heard, not seen: square, a broken line, no inset
 	side:     Box_Side,
 	at:       Maybe(f32),         // where the speaker stands, grid x
@@ -555,6 +560,7 @@ Balloon :: struct {
 	lines:      []string,
 	inset:      bool,
 	inset_at:   [2]f32, // the portrait's top-left
+	inset_size: [2]f32, // the portrait, in grid pixels
 	right:      bool,   // on the right-hand side of the screen
 }
 
@@ -573,9 +579,10 @@ balloon_on_right :: proc(ask: Balloon_Ask, grid_w: f32) -> bool {
 plan_balloon :: proc(ask: Balloon_Ask, m: Comic_Metrics) -> Balloon {
 	b: Balloon
 	b.inset = ask.portrait && !ask.voice
+	b.inset_size = ask.portrait_size if ask.portrait_size != {} else INSET_SIZE
 	b.right = balloon_on_right(ask, m.grid_w)
 	b.y = BALLOON_TOP
-	room := m.grid_w - EDGE - (EDGE_INSET if b.inset else EDGE) - (INSET_ROOM if b.inset else 0)
+	room := m.grid_w - EDGE - (EDGE_INSET if b.inset else EDGE) - (inset_room(b.inset_size) if b.inset else 0)
 	balloon_fit(&b, ask, m, min(BALLOON_START, room), room)
 	balloon_place(&b, m.grid_w)
 
@@ -626,15 +633,15 @@ balloon_place :: proc(b: ^Balloon, grid_w: f32) {
 	if b.right {
 		b.x = grid_w - (EDGE_INSET if b.inset else EDGE) - b.w
 	} else {
-		b.x = EDGE + (INSET_ROOM if b.inset else 0)
+		b.x = EDGE + (inset_room(b.inset_size) if b.inset else 0)
 	}
-	b.inset_at = {b.x - INSET_STEP, max(EDGE, b.y)}
+	b.inset_at = {b.x - inset_step(b.inset_size), max(EDGE, b.y)}
 }
 
 // The balloon and its inset together, left to right.
 @(private)
 balloon_span :: proc(b: Balloon) -> (left, right: f32) {
-	left = b.x - INSET_ROOM if b.inset else b.x
+	left = b.x - inset_room(b.inset_size) if b.inset else b.x
 	return left, b.x + b.w
 }
 
@@ -707,6 +714,12 @@ comic_ask :: proc(w: ^World, text: string, scale: f32) -> (ask: Balloon_Ask, bal
 		ask.text = text[len(sp.name) + 2:]
 	}
 	ask.portrait = w.message_who != nil && w.message_who.portrait.texture.id != 0
+	if ask.portrait {
+		// The inset is whatever size the face is: its art size when the
+		// sprite knows it, else its canvas size back in grid pixels.
+		pic := w.message_who.portrait
+		ask.portrait_size = {f32(pic.w), f32(pic.h)} if pic.w > 0 && pic.h > 0 else {math.round(f32(pic.frame_w) / scale), math.round(f32(pic.frame_h) / scale)}
+	}
 	ask.side = sp.side
 	if r, seen := speaker_bounds(w, sp); seen {
 		ask.at = (r.x + r.width / 2) / scale
@@ -748,9 +761,9 @@ speaker_bounds :: proc(w: ^World, sp: ^Speaker) -> (r: rl.Rectangle, ok: bool) {
 actor_sprite :: proc(a: Actor) -> Sprite {
 	if a.character != nil {
 		if a.anim != "" {
-			if part := a.character.parts[a.anim]; part.sprite.texture.id != 0 do return part.sprite
+			if part := a.character.parts[actor_turned(a, a.anim)]; part.sprite.texture.id != 0 do return part.sprite
 		}
-		want := a.pose if a.pose != "" else facing_part(a.facing, a.walking)
+		want := actor_turned(a, a.pose) if a.pose != "" else facing_part(a.facing, a.walking)
 		if part := a.character.parts[want]; part.sprite.texture.id != 0 do return part.sprite
 		if part := a.character.parts[facing_part(a.facing, false)]; part.sprite.texture.id != 0 do return part.sprite
 	}
@@ -780,10 +793,11 @@ draw_balloon :: proc(b: Balloon, name: string, voice: bool) {
 	}
 	if b.inset {
 		ix, iy := b.inset_at.x, b.inset_at.y
-		paper_fill(ix - 2, iy - 2, ix + 45, iy + 53, c.panel.paper)
-		grid_outline(ix - 3, iy - 3, ix + 46, iy + 54, c.line)
-		grid_outline(ix - 1, iy - 1, ix + 44, iy + 52, c.line)
-		grid_fill(ix, iy, ix + 43, iy + 51, c.ground)
+		iw, ih := b.inset_size.x, b.inset_size.y
+		paper_fill(ix - 2, iy - 2, ix + iw + 1, iy + ih + 1, c.panel.paper)
+		grid_outline(ix - 3, iy - 3, ix + iw + 2, iy + ih + 2, c.line)
+		grid_outline(ix - 1, iy - 1, ix + iw, iy + ih, c.line)
+		grid_fill(ix, iy, ix + iw - 1, iy + ih - 1, c.ground)
 	}
 	tx, ty := gx(b.x + BALLOON_PAD), gx(b.y + 3)
 	if name != "" {

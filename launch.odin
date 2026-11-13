@@ -163,7 +163,8 @@ title_load :: proc(w: ^World, f: ^Front) {
 }
 
 // The title as text: how many layers have a painting, the dusk and the
-// light, and the choices. What `!title` prints.
+// light, the choices, and the music if it has some (its length, which says
+// which piece it is). What `!title` prints.
 title_report :: proc(m: ^Menu) -> string {
 	painted, nights := 0, 0
 	for l in m.layers {
@@ -178,6 +179,7 @@ title_report :: proc(m: ^Menu) -> string {
 	if dusk != "no dusk" do fmt.sbprintf(&b, " then the %v", m.lights[1])
 	strings.write_string(&b, "; choices")
 	for item, i in m.items do fmt.sbprintf(&b, "%v %v", "" if i == 0 else ",", string(item))
+	if m.music != nil && loop_open(m.music) do fmt.sbprintf(&b, "; music, %.1f s", rl.GetMusicTimeLength(m.music.music))
 	return strings.to_string(b)
 }
 
@@ -378,6 +380,7 @@ reset_story :: proc(w: ^World) {
 	passer_cancel(w)
 	clear(&w.timers)
 	w.pending = ""
+	stop_over(w)
 	stop_music(w)
 	stop_bed(w)
 	w.time = 0

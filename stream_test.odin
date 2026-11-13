@@ -203,6 +203,115 @@ music_and_the_bed_hold_with_streams :: proc(t: ^testing.T) {
 	os.remove_all(dir)
 }
 
+// A cue over the music holds it and gives it back (play_over, stop_over): a
+// theme over a bed and back to the bed, a sting that ends by itself on the
+// play clock, the hour changing the music under a cue, and a death's cue as
+// the box opens, which a restore ends with the music. The music ducks under
+// a conversation, and can come from somewhere (music_from). `!sound` says it.
+@(test)
+a_cue_over_the_music_gives_it_back :: proc(t: ^testing.T) {
+	rl.SetTraceLogLevel(.ERROR)
+	dir := stream_dir("over")
+	song := stream_test_loop(3 * QOA_FRAME_LEN, 2)
+	defer delete(song)
+	for name in ([]string{"bed", "theme", "other"}) {
+		testing.expect(t, export_audio(song, fmt.tprintf("%v/%v.qoa", dir, name), 2, SAMPLE_RATE, loop = true))
+	}
+	testing.expect(t, export_audio(song[:QOA_FRAME_LEN * 2], fmt.tprintf("%v/sting.qoa", dir), 2, SAMPLE_RATE))
+	a: Assets
+	defer assets_destroy(&a)
+	testing.expect_value(t, assets_load_folder(&a, dir), 4)
+	w: World
+	defer destroy_world(&w)
+	w.assets = &a
+	append(&w.scenes, Scene{name = "bar"}, Scene{name = "quay"}, Scene{name = "deck"})
+	said :: proc(w: ^World) -> string {return sound_report(w)}
+
+	// A theme over the bed, and back to the bed.
+	play_music(&w, "bed", loop = true, volume = 0.3, duck = 0.5)
+	play_over(&w, "theme", loop = true, volume = 0.6)
+	testing.expect_value(t, music_heard(&w), "theme")
+	testing.expect_value(t, w.music_name, "bed")
+	r := said(&w)
+	testing.expectf(t, strings.contains(r, "music theme at 0.60 over bed; bed none"), "%v", r)
+	update_audio(&w)
+	testing.expect_value(t, music_heard(&w), "theme") // a looping cue goes on
+	stop_over(&w, "sting") // not the one up: nothing happens
+	testing.expect_value(t, music_heard(&w), "theme")
+	stop_over(&w, "theme")
+	testing.expect_value(t, music_heard(&w), "bed")
+	r = said(&w)
+	testing.expectf(t, strings.contains(r, "music bed at 0.30; bed none"), "%v", r)
+
+	// A sting is over when it has played, by the play clock, and the bed
+	// comes back.
+	play_over(&w, "sting")
+	testing.expectf(t, w.over_secs > 0.1 && w.over_secs < 0.13, "the sting (5120 frames) is %v s", w.over_secs)
+	update_audio(&w)
+	testing.expect_value(t, music_heard(&w), "sting")
+	w.time += 1
+	update_audio(&w)
+	testing.expect_value(t, music_heard(&w), "bed")
+
+	// The hour moves the music on under a cue, and leaves the cue alone.
+	play_over(&w, "theme", loop = true)
+	play_music(&w, "other", loop = true)
+	testing.expect_value(t, music_heard(&w), "theme")
+	testing.expect_value(t, w.music_name, "other")
+	stop_music(&w)
+	r = said(&w)
+	testing.expectf(t, strings.contains(r, "music theme; bed none"), "%v", r)
+	stop_over(&w)
+	testing.expect_value(t, music_heard(&w), "")
+
+	// Words duck it, down and back up again.
+	play_music(&w, "bed", loop = true, volume = 0.4, duck = 0.5)
+	c: Conversation
+	begin_conversation(&w, &c, []Talk_Line{{text = "Listen."}})
+	for _ in 0 ..< 30 do update_audio(&w)
+	testing.expectf(t, abs(w.music.volume - 0.2) < 0.001, "ducked to %v", w.music.volume)
+	end_conversation(&w)
+	for _ in 0 ..< 30 do update_audio(&w)
+	testing.expectf(t, abs(w.music.volume - 0.4) < 0.001, "back to %v", w.music.volume)
+
+	// From somewhere: loud at it, quieter across the room and leaning to its
+	// side, its other room's own, and faint everywhere else.
+	music_from(&w, {{room = "bar", at = {500, 400}, near = 0.6, far = 0.4, reach = 500},
+	                {room = "quay", at = {100, 500}, near = 0.4, far = 0.1, reach = 400}}, 0.05)
+	near_enough :: proc(a, b: f32) -> bool {return abs(a - b) < 0.001}
+	w.current, w.player.pos = 0, {500, 400}
+	v, pan := music_level(&w)
+	testing.expectf(t, near_enough(v, 0.6) && pan == 0, "at it: %v, %v", v, pan)
+	w.player.pos = {1000, 400}
+	v, pan = music_level(&w)
+	testing.expectf(t, near_enough(v, 0.4) && near_enough(pan, -0.6), "across the room: %v, %v", v, pan)
+	w.current, w.player.pos = 1, {300, 500}
+	v, _ = music_level(&w)
+	testing.expectf(t, near_enough(v, 0.25), "half way in the other: %v", v)
+	w.current = 2
+	v, _ = music_level(&w)
+	testing.expectf(t, near_enough(v, 0.05), "elsewhere: %v", v)
+	r = said(&w)
+	testing.expectf(t, strings.contains(r, "music bed at 0.05;"), "%v", r)
+	play_music(&w, "bed", loop = true)
+	testing.expect_value(t, len(w.music_places), 0) // the places went with the music
+
+	// A death's cue as the box opens, over the music; a restore ends both.
+	w.current = 0
+	die(&w, Death{reason = "Eaten.", music = "sting"})
+	advance_death(&w, 0.1)
+	testing.expect(t, w.death_box)
+	testing.expect_value(t, music_heard(&w), "sting")
+	testing.expect_value(t, w.music_name, "bed")
+	s: Save
+	defer save_destroy(&s)
+	save_world(&w, &s, "")
+	testing.expect(t, load_world(&w, save_text_of(&s)))
+	testing.expect_value(t, music_heard(&w), "")
+	testing.expect(t, w.music == nil && w.over == nil)
+	os.remove_all(dir)
+}
+
 // What `just bake` writes loads: a looping or long sound becomes a .qoa that
 // opens as a stream of its length, an effect a .wav that loads whole, each
 // fresh, and the name's old file goes; the folder loader plays the newer of

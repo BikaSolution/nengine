@@ -10,6 +10,7 @@ import "core:strings"
 //     scene parlour
 //     desc A small parlour. There's a hole in the floor.
 //     bg parlour
+//     drift smoke speed=6 y=20
 //     walk 24,122 318,122 318,186 4,186
 //     obj lamp pos=232,158 sprite=lamp fps=6 walk_to=214,162 block=circle:10 reach=circle:48
 //     text lamp A standing lamp. It flickers.
@@ -115,6 +116,20 @@ parse_scene :: proc(text: string, assets: ^Assets) -> (s: Scene, ok: bool) {
 				s.background = s.backdrop[.Day]
 			}
 
+		case "drift":
+			// `drift clouds speed=6 y=0 fps=5`: a layer drifting left over
+			// the backdrop, repeated sideways (Drift, scene.odin).
+			if len(l.words) == 0 do continue
+			d := Drift{name = strings.clone(l.words[0])}
+			d.layer.speed = field_f32(l, "speed")
+			d.layer.y = field_f32(l, "y")
+			d.layer.fps = field_f32(l, "fps")
+			if assets != nil {
+				d.lit = drift_lit(assets, l.words[0])
+				d.layer.sprite = d.lit.by[.Day]
+			}
+			append(&s.drifts, d)
+
 		case "depth_map", "solid_map":
 			// Sierra's priority and control screens (priority.odin): found by
 			// the backdrop's name unless the file names others, or `none`.
@@ -189,6 +204,7 @@ parse_scene :: proc(text: string, assets: ^Assets) -> (s: Scene, ok: bool) {
 				}
 				o.rest_pose = clone_field(l, "pose")
 				o.actor.pose = o.rest_pose
+				o.rest_facing = o.actor.facing
 				if assets != nil {
 					if art, found := &assets.chars[char_name]; found do o.actor.character = art
 				}
@@ -422,6 +438,11 @@ scene_text :: proc(s: ^Scene, allocator := context.temp_allocator) -> string {
 		}
 	}
 	if s.background_name != "" do fmt.sbprintf(&b, "bg %v\n", s.background_name)
+	for d in s.drifts {
+		fmt.sbprintf(&b, "drift %v speed=%v y=%v", d.name, d.layer.speed, d.layer.y)
+		if d.layer.fps != 0 do fmt.sbprintf(&b, " fps=%v", d.layer.fps)
+		strings.write_byte(&b, '\n')
+	}
 	if s.indoors do strings.write_string(&b, "indoors\n")
 	if s.depth_named do fmt.sbprintf(&b, "depth_map %v\n", s.depth_name)
 	if s.solid_named do fmt.sbprintf(&b, "solid_map %v\n", s.solid_name)
@@ -673,6 +694,8 @@ free_scene_strings :: proc(s: ^Scene) {
 		delete(said.text)
 	}
 	delete(s.background_name)
+	for d in s.drifts do delete(d.name)
+	delete(s.drifts)
 	delete(s.depth_name)
 	delete(s.solid_name)
 	// `ambience_name` is a view into `ambiences` for a scene from a file.
@@ -744,6 +767,26 @@ free_scene_strings :: proc(s: ^Scene) {
 		delete(win.frame)
 		delete(win.only)
 	}
+}
+
+// A drifting layer's paintings in each light: the .sprite of that name, so
+// its frames come with it, or failing that a baked .png. Missing lights borrow
+// as a backdrop's do.
+@(private = "file")
+drift_lit :: proc(a: ^Assets, name: string) -> (ls: Lit_Sprite) {
+	for light in Light {
+		key := strings.concatenate({name, LIGHT_SUFFIX[light]}, context.temp_allocator)
+		if s, drawn := a.sprites[key]; drawn {
+			ls.by[light] = s
+		} else if tex, found := a.images[key]; found {
+			ls.by[light] = texture_sprite(tex)
+		} else {
+			continue
+		}
+		ls.painted += {light}
+	}
+	fill_fallbacks(&ls.by, ls.painted)
+	return
 }
 
 // The object a `text`, `on`, `routine` or `step` line is about: the most

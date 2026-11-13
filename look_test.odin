@@ -56,6 +56,14 @@ a_balloon_sits_at_the_top_flush_to_its_side :: proc(t: ^testing.T) {
 	testing.expect_value(t, left.inset_at.x, 7) // its frame four in from the edge
 	testing.expect_value(t, left.x, 54)
 
+	// A bigger face gets a bigger inset, and the balloon steps over it.
+	big := plan_balloon({text = "Nine. Ten. Mind the box.", name = "Otto", portrait = true, portrait_size = {60, 72}, at = 90}, M)
+	testing.expect_value(t, big.inset_size, [2]f32{60, 72})
+	testing.expect_value(t, big.inset_at.x, 7)
+	testing.expect_value(t, big.x, 70)
+	bigr := plan_balloon({text = "Nine. Ten. Mind the box.", name = "Finn", portrait = true, portrait_size = {60, 72}, at = 280}, M)
+	testing.expect_value(t, bigr.inset_at, [2]f32{bigr.x - 63, 6})
+
 	bare := plan_balloon({text = "That's the wind.", name = "Brand", at = 250}, M)
 	testing.expect(t, !bare.inset)
 	testing.expect_value(t, bare.x + bare.w, 316)

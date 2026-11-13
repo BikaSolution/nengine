@@ -539,3 +539,150 @@ a_cutscene_starts_from_where_their_lines_put_people :: proc(t: ^testing.T) {
 	testing.expect(t, !cook.coming)
 	testing.expect_value(t, cook.actor.pos, [2]f32{300, 400})
 }
+
+// A painted shot during a cutscene's lines: a `shot` cue puts one up, a `line`
+// cue's `shot=` another, with its frame for each line in turn, and `shot off`
+// takes it down.
+
+@(private = "file")
+ROAD_NODES :: `### A1.ROAD · on the road
+ADA: One.
+COOK: Two.
+ADA: Three.
+COOK: Four.
+`
+
+@(private = "file")
+SHOTS :: `cut shots
+0.0 shot road_wide 1
+1.0 line A1.ROAD 1-4 shot=road_close frames=2,0,1
+30.0 shot off
+31.0 end
+`
+
+@(private = "file")
+open_shots :: proc(t: ^testing.T, y: ^Yard) {
+	open_yard(t, y)
+	testing.expect_value(t, parse_nodes(&y.w, ROAD_NODES), 1)
+	c, ok := parse_cutscene(SHOTS)
+	testing.expect(t, ok)
+	y.assets.cuts["shots"] = c
+}
+
+@(private = "file")
+expect_shot :: proc(t: ^testing.T, w: ^World, name: string, frame: i32, loc := #caller_location) {
+	got, f, ok := cutscene_shot(w)
+	testing.expectf(t, ok && got == name && f == frame, "shot %v %v, wanted %v %v", got, f, name, frame, loc = loc)
+}
+
+@(test)
+a_cutscene_shows_each_line_in_its_frame_of_the_shot :: proc(t: ^testing.T) {
+	y := new(Yard)
+	defer free(y)
+	open_shots(t, y)
+	defer shut_yard(y)
+	w := &y.w
+
+	testing.expect(t, play_cutscene(w, "shots"))
+	frames(w, 0.1)
+	expect_shot(t, w, "road_wide", 1)
+	frames(w, 1.0 - w.cut.t + 0.05)
+	testing.expect_value(t, message(w), "Ada: One.")
+	expect_shot(t, w, "road_close", 2)
+	frames(w, line_secs("One."))
+	testing.expect_value(t, message(w), "the cook: Two.")
+	expect_shot(t, w, "road_close", 0)
+	frames(w, line_secs("Two."))
+	testing.expect_value(t, message(w), "Ada: Three.")
+	expect_shot(t, w, "road_close", 1)
+	frames(w, line_secs("Three."))
+	testing.expect_value(t, message(w), "the cook: Four.")
+	expect_shot(t, w, "road_close", 1) // the last frame given repeats
+	frames(w, 30.05 - w.cut.t)
+	_, _, up := cutscene_shot(w)
+	testing.expect(t, !up)
+}
+
+// Enter keeps the frames: the line it jumps to goes up in its own.
+@(test)
+enter_keeps_a_shots_frames_with_their_lines :: proc(t: ^testing.T) {
+	y := new(Yard)
+	defer free(y)
+	open_shots(t, y)
+	defer shut_yard(y)
+	w := &y.w
+
+	play_cutscene(w, "shots")
+	frames(w, 0.1)
+	advance_cutscene(w) // to the first line, at 1.0
+	frames(w, 1.0 / 60)
+	testing.expect_value(t, message(w), "Ada: One.")
+	expect_shot(t, w, "road_close", 2)
+	advance_cutscene(w)
+	frames(w, 1.0 / 60)
+	advance_cutscene(w)
+	frames(w, 1.0 / 60)
+	testing.expect_value(t, message(w), "Ada: Three.")
+	expect_shot(t, w, "road_close", 1)
+	// The end takes it down with everything else.
+	skip_cutscene(w)
+	_, _, up := cutscene_shot(w)
+	testing.expect(t, !up)
+}
+
+@(test)
+the_harness_says_when_a_shot_goes_up_and_comes_down :: proc(t: ^testing.T) {
+	y := new(Yard)
+	defer free(y)
+	open_shots(t, y)
+	defer shut_yard(y)
+	w := &y.w
+
+	play_cutscene(w, "shots")
+	testing.expect_value(t, cutscene_aloud(w), `  [cutscene shots]
+  [shot road_wide]
+  [shot road_close]
+  Ada: One.
+  the cook: Two.
+  Ada: Three.
+  the cook: Four.
+  [shot off]
+  [end shots]
+`)
+}
+
+// `speed=` on the cast: the player, somebody in the room and an extra each
+// walk at their own, and the two who were here walk at theirs again after.
+@(private = "file")
+SPEEDS :: `cut speeds
+cast ada at=100,300 facing=right speed=40
+cast cook char=cook at=300,400 speed=50
+cast cart char=stranger at=0,200 speed=60
+0.0 ada walk_to 900,300
+0.0 cook walk_to 900,400
+0.0 cart walk_to 900,200
+5.0 end
+`
+
+@(test)
+a_cast_member_walks_at_their_own_speed :: proc(t: ^testing.T) {
+	y := new(Yard)
+	defer free(y)
+	open_yard(t, y)
+	defer shut_yard(y)
+	w := &y.w
+	c, ok := parse_cutscene(SPEEDS)
+	testing.expect(t, ok)
+	y.assets.cuts["speeds"] = c
+
+	testing.expect(t, play_cutscene(w, "speeds"))
+	frames(w, 2.0)
+	cook := &w.scenes[0].objects[0]
+	testing.expectf(t, abs(w.player.pos.x - (100 + 40 * 2)) < 3, "she is at %v", w.player.pos.x)
+	testing.expectf(t, abs(cook.actor.pos.x - (300 + 50 * 2)) < 3, "the cook is at %v", cook.actor.pos.x)
+	testing.expectf(t, abs(w.cut.actors[2].pos.x - 60 * 2) < 3, "the cart is at %v", w.cut.actors[2].pos.x)
+	testing.expect_value(t, w.cut.actors[2].speed, f32(60))
+	skip_cutscene(w)
+	testing.expect_value(t, w.player.speed, f32(120))
+	testing.expect_value(t, cook.actor.speed, f32(120))
+}

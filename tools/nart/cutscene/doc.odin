@@ -114,11 +114,7 @@ doc_forget_index :: proc(d: ^Cut_Doc) {
 		delete(c.m.name)
 		delete(c.m.character)
 	}
-	for c in d.cues {
-		delete(c.q.who)
-		delete(c.q.text)
-		delete(c.q.tag)
-	}
+	for &c in d.cues do ne.cue_destroy(&c.q)
 	clear(&d.people)
 	clear(&d.cues)
 	clear(&d.order)
@@ -433,6 +429,7 @@ words_read :: proc(q: ne.Cue, words_there: int) -> int {
 	case .End:                   return 1 // end
 	case .Sound:                 return 2 // sound NAME
 	case .Line:                  return 3 // line NODE N-M
+	case .Shot:                  return 2 if q.text == "" else min(3, max(words_there, 2)) // shot off, shot NAME [FRAME]
 	case .Shake:                 return 3 // camera shake SECS
 	case .Walk_To, .Face, .Leave: return 3 // WHO walk_to X,Y, WHO leave DIR
 	case .Play:                  return min(4, max(words_there, 3)) // WHO play PART [N]
@@ -450,6 +447,18 @@ cue_note :: proc(raw: string, q: ne.Cue) -> string {
 	for t, i in toks do if i > 0 && !is_field(raw[t.start:t.end]) do words += 1
 	want := words_read(q, words)
 	if want < 0 do return ""
+	// A shot's frame is a number: a word after its picture that is not one
+	// is the start of the note, as the engine reads it.
+	if q.action == .Shot && want == 3 {
+		seen := 0
+		for t, i in toks {
+			if i == 0 || is_field(raw[t.start:t.end]) do continue
+			seen += 1
+			if seen < 3 do continue
+			if _, is_frame := strconv.parse_int(raw[t.start:t.end]); !is_frame do want = 2
+			break
+		}
+	}
 	end, seen := -1, 0
 	for t, i in toks {
 		if i == 0 || is_field(raw[t.start:t.end]) do continue
@@ -461,13 +470,21 @@ cue_note :: proc(raw: string, q: ne.Cue) -> string {
 	}
 	if end < 0 do return ""
 	note := raw[end:]
+	// A `line` cue's own fields are written with its words, not kept as a
+	// note: its `tag=`, `shot=` and `frames=`.
 	if q.action == .Line {
-		for t in tokens_of(note) {
-			if !strings.has_prefix(note[t.start:t.end], "tag=") do continue
-			from := t.start
-			for from > 0 && (note[from - 1] == ' ' || note[from - 1] == '\t') do from -= 1
-			note = strings.concatenate({note[:from], note[t.end:]}, context.temp_allocator)
-			break
+		for {
+			cut := false
+			for t in tokens_of(note) {
+				tok := note[t.start:t.end]
+				if !strings.has_prefix(tok, "tag=") && !strings.has_prefix(tok, "shot=") && !strings.has_prefix(tok, "frames=") do continue
+				from := t.start
+				for from > 0 && (note[from - 1] == ' ' || note[from - 1] == '\t') do from -= 1
+				note = strings.concatenate({note[:from], note[t.end:]}, context.temp_allocator)
+				cut = true
+				break
+			}
+			if !cut do break
 		}
 	}
 	if strings.trim_space(note) == "" do return ""

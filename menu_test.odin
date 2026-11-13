@@ -18,3 +18,19 @@ parallax_layers_drift_and_wrap :: proc(t: ^testing.T) {
 		testing.expectf(t, o <= 0 && o > -320, "offset %v out of range", o)
 	}
 }
+
+// A layer of several frames plays them, as a sprite does: moving water. One
+// frame, or no `fps`, shows the first.
+@(test)
+a_layer_of_several_frames_plays_them :: proc(t: ^testing.T) {
+	water := Layer{sprite = Sprite{frame_w = 320, frames = 3}, speed = 24, fps = 5}
+	testing.expect_value(t, layer_frame(water, 0), 0)
+	testing.expect_value(t, layer_frame(water, 0.2), 1)
+	testing.expect_value(t, layer_frame(water, 0.45), 2)
+	testing.expect_value(t, layer_frame(water, 0.65), 0) // round again
+	still := water
+	still.fps = 0
+	testing.expect_value(t, layer_frame(still, 0.45), 0)
+	one := Layer{sprite = Sprite{frame_w = 320, frames = 1}, fps = 5}
+	testing.expect_value(t, layer_frame(one, 0.45), 0)
+}

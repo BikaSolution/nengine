@@ -114,7 +114,7 @@ cue_secs :: proc(e: ^Editor, q: ne.Cue) -> f32 {
 	case .Walk_To:
 		i := doc_member(&e.doc, q.who)
 		if i < 0 do return 0
-		return rl.Vector2Distance(person_at(e, i, q.at), q.to) / WALK_SPEED
+		return rl.Vector2Distance(person_at(e, i, q.at), q.to) / member_speed(e, i)
 	case .Line:
 		return line_cue_secs(&e.nodes, q)
 	case .Play:
@@ -136,6 +136,7 @@ cue_colour :: proc(a: ne.Cue_Action, picked: bool) -> rl.Color {
 	case .Think:   base = {200, 180, 240, 255}
 	case .Narrate: base = {220, 210, 150, 255}
 	case .Line:    base = {170, 230, 190, 255}
+	case .Shot:    base = {230, 170, 210, 255}
 	case .Shake:   base = {240, 150, 130, 255}
 	case .Sound:   base = {240, 190, 120, 255}
 	case .Leave:   base = {120, 230, 230, 255}
@@ -159,8 +160,13 @@ cue_label :: proc(q: ne.Cue) -> string {
 	case .Line:
 		// A node's lines: which node, which lines, which telling. The words
 		// are in the writers' file, not here.
-		if q.tag != "" do return fmt.tprintf("line %v %v [%v]", q.text, ne.line_range_text(q.lines), q.tag)
-		return fmt.tprintf("line %v %v", q.text, ne.line_range_text(q.lines))
+		label := fmt.tprintf("line %v %v", q.text, ne.line_range_text(q.lines))
+		if q.tag != "" do label = fmt.tprintf("%v [%v]", label, q.tag)
+		if q.shot != "" do label = fmt.tprintf("%v in %v", label, q.shot)
+		return label
+	case .Shot:
+		if q.text == "" do return "shot off"
+		return fmt.tprintf("shot %v %v", q.text, q.frame)
 	case .Shake:   return fmt.tprintf("shake %.1f", q.amount)
 	case .Sound:   return fmt.tprintf("sound %v", q.text)
 	case .Leave:   return fmt.tprintf("leave %v", ne.COMPASS_WORDS[q.dir])
@@ -178,6 +184,7 @@ action_name :: proc(a: ne.Cue_Action) -> string {
 	case .Think:   return "think"
 	case .Narrate: return "narrate"
 	case .Line:    return "line"
+	case .Shot:    return "shot"
 	case .Shake:   return "shake"
 	case .Sound:   return "sound"
 	case .Leave:   return "leave"

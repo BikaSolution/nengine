@@ -143,3 +143,77 @@ cast moore char=moore at=-50,445 facing=right
 	testing.expect_value(t, cue_body_text(c.cues[0]), "ada walk_to 480,470")
 	testing.expect(t, c.people[0].keep_place && c.people[0].keep_facing)
 }
+
+// A cast member's own speed, and a painted shot: up, on a frame, off, and a
+// `line` cue's shot with a frame for each line. Each reads back as itself.
+@(test)
+a_speed_and_a_shot_read_back_as_themselves :: proc(t: ^testing.T) {
+	text := `cut x
+cast cart char=cart at=-80,500 speed=60
+cast ada
+cast boat char=boat speed=12.5
+0.00 cart walk_to 1100,500
+1.00 shot two_shot
+1.50 shot two_shot 2
+2.00 line A1.ROAD 1-4 shot=two_shot frames=0,1,0,1
+3.00 line A1.ROAD 5 frames=2
+3.50 line A1.ROAD 6 tag=late shot=wide
+4.00 shot off
+`
+	c, ok := parse_cutscene(text)
+	testing.expect(t, ok)
+	defer cutscene_destroy(&c)
+	testing.expect_value(t, c.people[0].speed, f32(60))
+	testing.expect_value(t, c.people[1].speed, f32(0))
+	testing.expect_value(t, cast_speed(c.people[0]), f32(60))
+	testing.expect_value(t, cast_speed(c.people[1]), CUT_SPEED)
+	testing.expect_value(t, c.cues[1].action, Cue_Action.Shot)
+	testing.expect_value(t, c.cues[1].text, "two_shot")
+	testing.expect_value(t, c.cues[2].frame, i32(2))
+	testing.expect_value(t, c.cues[3].shot, "two_shot")
+	testing.expect_value(t, len(c.cues[3].frames), 4)
+	testing.expect_value(t, c.cues[3].frames[1], i32(1))
+	testing.expect_value(t, c.cues[4].shot, "")
+	testing.expect_value(t, c.cues[6].text, "") // off
+
+	lines := make([dynamic]string, context.temp_allocator)
+	append(&lines, "cut x")
+	for m in c.people do append(&lines, cast_text(m))
+	for q in c.cues do append(&lines, cue_text(q))
+	want := []string{
+		"cut x", "cast cart char=cart at=-80,500 speed=60", "cast ada", "cast boat char=boat speed=12.5",
+		"0.00 cart walk_to 1100,500", "1.00 shot two_shot", "1.50 shot two_shot 2",
+		"2.00 line A1.ROAD 1-4 shot=two_shot frames=0,1,0,1", "3.00 line A1.ROAD 5 frames=2",
+		"3.50 line A1.ROAD 6 tag=late shot=wide", "4.00 shot off",
+	}
+	testing.expect_value(t, len(lines), len(want))
+	for l, i in lines do if i < len(want) do testing.expect_value(t, l, want[i])
+
+	again, good := parse_cutscene(cutscene_text(&c))
+	testing.expect(t, good)
+	defer cutscene_destroy(&again)
+	testing.expect_value(t, again.people[2].speed, f32(12.5))
+	testing.expect_value(t, len(again.cues[3].frames), 4)
+}
+
+// Frames: a word that is not a frame is left out, and the last one given
+// goes on for every line after it.
+@(test)
+a_shots_frames_go_with_the_lines_in_turn :: proc(t: ^testing.T) {
+	f := parse_frames("0, 2,x,-1,1")
+	defer delete(f)
+	testing.expect_value(t, len(f), 3)
+	testing.expect_value(t, frames_text(f), "0,2,1")
+	testing.expect(t, parse_frames("") == nil)
+	testing.expect_value(t, shot_frame_for(f, 0), i32(0))
+	testing.expect_value(t, shot_frame_for(f, 1), i32(2))
+	testing.expect_value(t, shot_frame_for(f, 2), i32(1))
+	testing.expect_value(t, shot_frame_for(f, 9), i32(1)) // the last repeats
+	testing.expect_value(t, shot_frame_for(nil, 3), i32(0))
+
+	// `shot` with nothing to show is not a cue.
+	c, ok := parse_cutscene("cut x\n1.0 shot\n")
+	testing.expect(t, ok)
+	defer cutscene_destroy(&c)
+	testing.expect_value(t, len(c.cues), 0)
+}

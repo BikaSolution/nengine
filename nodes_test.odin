@@ -108,7 +108,7 @@ TELLINGS :: `### ASK.ELENA.HERSELF · Herself
 — Act II: someone walking the fence line, all night.
 
 ### INTRO.CLOSE · Somebody has to go
-[close-up, talk] HARGREAVE: Mr Pyke is in the Infirmary.
+[close-up, talk] HARGREAVE: Mr Abbot is in the Infirmary.
 `
 
 @(test)

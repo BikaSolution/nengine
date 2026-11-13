@@ -39,8 +39,8 @@ Passer :: struct {
 	seed:      u64,    // the dice; 0 seeds them from the clock
 }
 
-// An unhurried walk at people scale on a 1024-wide canvas: a figure 166
-// tall (52 art pixels at 3.2) crosses a four-foot window in about two seconds.
+// An unhurried walk at people scale on a 1024-wide canvas: a figure about 186
+// tall (58 art pixels at 3.2) crosses a four-foot window in about two seconds.
 PASSER_SPEED :: f32(110)
 
 // What the harness seeds the dice with, so a script throws the same every run.
@@ -288,6 +288,7 @@ draw_passer :: proc(w: ^World, win: ^Window, tint: Palette_Map, plain: bool) {
 		character = art,
 		facing    = .Right if p.rightward else .Left,
 		walking   = true,
+		speed     = passer_speed(w), // so a walk with `step=` keeps its feet (actor.odin)
 		walk_fps  = 8,
 		idle_fps  = 4,
 		anim_time = f * passer_span(win.glass, size.x) / passer_speed(w),

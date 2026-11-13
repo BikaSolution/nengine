@@ -1,5 +1,6 @@
 package nengine
 
+import "core:strings"
 import rl "vendor:raylib"
 
 // Which way someone is facing. Which pose of a character gets drawn.
@@ -293,19 +294,24 @@ actor_picture :: proc(a: Actor) -> (s: Sprite, frame: i32, flip: bool) {
 		// Something being played once, from its own first frame, on its own
 		// clock; it holds its last frame until actor_tick lets it go.
 		if a.anim != "" {
-			part := a.character.parts[a.anim]
+			part := a.character.parts[actor_turned(a, a.anim)]
 			if part.sprite.texture.id != 0 {
 				frame, _ = anim_frame(a.anim_t, part.fps, part.sprite.frames, part.holds, loop = a.anim_times == 0)
 				return part.sprite, frame, false
 			}
 		}
-		want := a.pose if a.pose != "" else facing_part(a.facing, a.walking)
+		want := actor_turned(a, a.pose) if a.pose != "" else facing_part(a.facing, a.walking)
 		part := a.character.parts[want]
 		// A walk nobody has drawn yet is the standing pose that way, sliding,
 		// rather than nobody at all.
 		if part.sprite.texture.id == 0 && a.pose == "" && a.walking do part = a.character.parts[facing_part(a.facing, false)]
 		if part.sprite.texture.id != 0 {
+			// A walk held as a pose by somebody standing still (a lamp walk at a
+			// gap, a rifle walk at a post) stands on its first passing frame,
+			// legs together, rather than marching on the spot.
+			if part.step > 0 && !a.walking do return part.sprite, part.sprite.frames / 4, false
 			fps := part.fps if part.fps > 0 else (a.walk_fps if a.walking else a.idle_fps)
+			if a.walking && part.step > 0 && a.speed > 0 do fps = walk_rate(a.speed, part.step, part.sprite)
 			frame, _ = anim_frame(a.anim_time, fps, part.sprite.frames, part.holds)
 			return part.sprite, frame, false
 		}
@@ -315,3 +321,31 @@ actor_picture :: proc(a: Actor) -> (s: Sprite, frame: i32, flip: bool) {
 	if a.walking do return a.walk, i32(a.anim_time * a.walk_fps), a.facing_left
 	return a.idle, i32(a.anim_time * a.idle_fps), a.facing_left
 }
+
+// An extra pose never mirrors, but it may be drawn once for each way it
+// faces: `kick_left` beside `kick` is what shows, whether held as a pose or
+// played, while they face left. The part to show for `name`: that version
+// when the character has it, or `name`.
+actor_turned :: proc(a: Actor, name: string) -> string {
+	if a.character == nil || name == "" do return name
+	turned := pose_turned(name, a.facing)
+	if p, ok := a.character.parts[turned]; ok && p.sprite.texture.id != 0 do return turned
+	return name
+}
+
+// The name of a pose's version drawn for one facing: `sack` facing right is
+// `sack_right`. In the frame's temp memory.
+pose_turned :: proc(pose: string, f: Facing) -> string {
+	side := [Facing]string{.Front = "front", .Back = "back", .Left = "left", .Right = "right"}
+	return strings.concatenate({pose, "_", side[f]}, context.temp_allocator)
+}
+
+// How fast to play a walk so its feet stay planted: the body covers two
+// strides per cycle of the part's frames, and moves at `speed` canvas pixels
+// a second. `step` is in art pixels, so it is scaled up to the canvas.
+walk_rate :: proc(speed, step: f32, s: Sprite) -> f32 {
+	scale := s.scale if s.scale > 0 else 1
+	cycles := speed / (2 * step * scale)
+	return cycles * f32(max(s.frames, 1))
+}
+

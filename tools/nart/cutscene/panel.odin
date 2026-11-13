@@ -519,7 +519,7 @@ cue_panel :: proc(l: ^Lay, i: int) {
 		m := doc_member(d, q.who)
 		if m >= 0 {
 			from := person_at(e, m, q.at)
-			note(l, fmt.tprintf("from %v: %.1fs at the walking speed. Drag the ring on the stage to move it", vec_text(from), rl.Vector2Distance(from, q.to) / WALK_SPEED))
+			note(l, fmt.tprintf("from %v: %.1fs at %v a second. Drag the ring on the stage to move it", vec_text(from), rl.Vector2Distance(from, q.to) / member_speed(e, m), member_speed(e, m)))
 		}
 	case .Play:
 		// Which part: the poses their character has.
@@ -579,6 +579,10 @@ cue_panel :: proc(l: ^Lay, i: int) {
 			}
 		}
 		note(l, "off through that side of the room and out of sight; the next cut can bring them on with `enter=`")
+	case .Shot:
+		field(l, "picture", fmt.tprintf("cue%v.part", i), q.text if q.text != "" else "off", {.Cue_Part, i})
+		if stale(l) do return
+		note(l, "a painted sprite over the whole room, with its frame after its name on the line; `off` takes it down")
 	case .End:
 		note(l, "the cut stops here, whatever is still to come")
 	}
@@ -621,6 +625,7 @@ change_kind :: proc(e: ^Editor, i: int, a: ne.Cue_Action, status: ^ui.Status) {
 	case .Sound:   q.text = "?"
 	case .Shake:   if q.amount <= 0 do q.amount = 0.4
 	case .Leave:   q.dir = .East
+	case .Shot:    q.text, q.frame = "", 0
 	case .Say, .Think, .Narrate, .End:
 	}
 	mark(e)
