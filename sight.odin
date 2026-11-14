@@ -9,7 +9,7 @@ import rl "vendor:raylib"
 // The parser's "here" is a person's line in the scene file whose when= holds
 // (object_here). The eye's is more: a picture for the pose they are in, and
 // that picture inside the room's frame. With frames running the two came
-// apart, and she was seen talking to nobody (Nick's playthrough, 24 Oct):
+// apart, and she was seen talking to nobody (Sam's playthrough, 24 Oct):
 //
 // - Somebody whose answer spent a turn, and the turn took them away: gone
 //   from the picture before their first word. Now a person who goes at once
