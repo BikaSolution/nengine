@@ -3129,4 +3129,4 @@ Not for people: somebody walking moves a canvas pixel at a time.
 
 ## Licence
 
-MIT. See [LICENSE](LICENSE). The Tiny5 font in `fonts/` is under the SIL Open Font License ([fonts/OFL.txt](fonts/OFL.txt)).
+MIT. See [LICENSE](LICENSE). Written by Sam, owned by BikaSolutions.co.za ([AUTHORS](AUTHORS)). The Tiny5 font in `fonts/` is under the SIL Open Font License ([fonts/OFL.txt](fonts/OFL.txt)).
