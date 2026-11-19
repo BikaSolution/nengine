@@ -130,10 +130,11 @@ light_after_tick :: proc(w: ^World) {
 	if len(w.scenes) > 0 && current_scene(w).indoors do relight(w)
 }
 
-// Which light a room is drawn in: the player's room in what they have seen,
-// any other room (through a host's eyes) as it is now.
+// Which light a room is drawn in: the player's room in what they have seen;
+// any room through a host's eyes as it is now, the room her body is in
+// included (a host is not behind a door, and its view is tuned for the hour).
 room_light :: proc(w: ^World, scene: ^Scene) -> Light {
-	if len(w.scenes) > 0 && scene == current_scene(w) do return w.light
+	if len(w.scenes) > 0 && scene == current_scene(w) && !drawing_host_view do return w.light
 	return light_now(w)
 }
 

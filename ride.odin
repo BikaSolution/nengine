@@ -535,8 +535,14 @@ draw_host_view :: proc(w: ^World, h: ^Host) {
 		rotation = h.camera.tilt + math.sin(w.time * 0.7) * h.camera.sway * 0.1,
 		zoom     = zoom,
 	}
+	drawing_host_view = true // `seen=host` things: here, and only here
 	draw_room_through(w, sc, r.cam_room == r.body_room, cam, ride_view_tex)
+	drawing_host_view = false
 }
+
+// True only while draw_host_view draws: see object_drawn (scene.odin).
+@(private)
+drawing_host_view: bool
 
 // A room seen through a camera that tilts and zooms, into `into`. Each sprite
 // is drawn through it the way the blown-up pictures were (sprite_camera), so

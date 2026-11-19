@@ -20,9 +20,11 @@ world_print :: proc(w: ^World, allocator := context.temp_allocator) -> []string 
 		append(&lines, fmt.aprintf("%v | reads | %v", sc.name, sc.description, allocator = allocator))
 		if sc.ambience_name != "" do append(&lines, fmt.aprintf("%v | sounds | %v", sc.name, sc.ambience_name, allocator = allocator))
 		for o in sc.objects {
-			if o.hidden || (o.sprite_name == "" && !o.walks) do continue // only what is drawn
+			// Only what is drawn: in her eyes, or (`seen=host`) in a host's.
+			if (o.hidden && !o.host_sees) || (o.sprite_name == "" && !o.walks) do continue
 			what := o.char_name if o.walks else o.sprite_name
-			append(&lines, fmt.aprintf("%v | %v | %v %v at %.0f,%.0f", sc.name, o.name, what, o.rest_pose, o.pos.x, o.pos.y, allocator = allocator))
+			seen := " (a host's view)" if o.host_only else ""
+			append(&lines, fmt.aprintf("%v | %v | %v %v at %.0f,%.0f%v", sc.name, o.name, what, o.rest_pose, o.pos.x, o.pos.y, seen, allocator = allocator))
 		}
 	}
 	slice.sort(lines[:])

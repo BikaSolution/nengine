@@ -165,6 +165,46 @@ anything_else_while_riding_is_the_games :: proc(t: ^testing.T) {
 }
 
 @(test)
+a_thing_only_a_host_sees :: proc(t: ^testing.T) {
+	w := cat_house()
+	defer done(&w)
+	append(&w.scenes[0].objects, Object{name = "mouse", only = "late", host_only = true})
+	m := &w.scenes[0].objects[len(w.scenes[0].objects) - 1]
+
+	refresh_world(&w)
+	testing.expect(t, m.hidden && !m.host_sees) // not its hour: nobody sees it
+	testing.expect(t, !object_drawn(m, true))
+
+	set_flag(&w, "late", true)
+	refresh_world(&w)
+	testing.expect(t, m.hidden) // to the parser, nearness, sight and the rest, never here
+	testing.expect(t, object_here(&w.scenes[0], "mouse") == nil)
+	testing.expect(t, m.host_sees)
+	testing.expect(t, !object_drawn(m, false)) // her own eyes
+	testing.expect(t, object_drawn(m, true))   // the host's
+
+	// Going under, and coming back: the handover draws her own room, and only
+	// draw_host_view ever turns drawing_host_view on.
+	testing.expect_value(t, ride(&w, "cat"), Ride_Outcome.Started)
+	testing.expect_value(t, w.ride.phase, Ride_Phase.Going)
+	testing.expect(t, !drawing_host_view)
+	testing.expect(t, !object_drawn(m, drawing_host_view))
+	settle_ride(&w)
+	come_back(&w)
+	testing.expect(t, !object_drawn(m, drawing_host_view))
+
+	// A thing in a file says so, and is written back the same.
+	parsed, ok := parse_scene("scene barn\nobj mouse pos=10,20 when=late seen=host\nobj cat pos=30,20\n", nil)
+	testing.expect(t, ok)
+	append(&w.scenes, parsed) // freed with the world
+	sc := &w.scenes[len(w.scenes) - 1]
+	testing.expect(t, sc.objects[0].host_only && !sc.objects[1].host_only)
+	out := scene_text(sc)
+	testing.expect(t, strings.contains(out, "seen=host"))
+	testing.expect_value(t, strings.count(out, "seen=host"), 1)
+}
+
+@(test)
 tones_stay_in_the_palette :: proc(t: ^testing.T) {
 	greys := palette_map_tones({0, 8, 7, 15})
 	testing.expect_value(t, greys[0], 0)   // black stays black

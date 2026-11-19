@@ -142,7 +142,7 @@ is_dative :: proc(verb: string, vocab: []Word) -> bool {
 @(private)
 split_words :: proc(line: string) -> []string {
 	// An apostrophe joins rather than splits: "don't" is "dont", the way
-	// players type it either way, and "fairbank's" is "calloways". A curly
+	// players type it either way, and "fairbank's" is "fairbanks". A curly
 	// one (’) is the same apostrophe from a word processor.
 	text, _ := strings.replace_all(line, "’", "'", context.temp_allocator)
 	clean := make([dynamic]u8, 0, len(text), context.temp_allocator)
@@ -196,7 +196,7 @@ is_called :: proc(w: Word, phrase: string) -> bool {
 	rest := w.synonyms
 	for s in strings.split_iterator(&rest, ",") {
 		// A synonym written with an apostrophe matches the way split_words
-		// leaves one: "fairbank's index" is "calloways index".
+		// leaves one: "fairbank's index" is "fairbanks index".
 		said := strings.trim_space(s)
 		if strings.index_byte(said, '\'') >= 0 do said, _ = strings.remove_all(said, "'", context.temp_allocator)
 		if said == phrase do return true

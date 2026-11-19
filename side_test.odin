@@ -610,6 +610,27 @@ obj moore pos=260,150 char=moore when=here,up enters=west leaves=east
 	testing.expect(t, stand.going, "and off the screen through the east side, for good")
 }
 
+// A line only a host sees (`seen=host`) is nobody in sight: the same person
+// on it never keeps the one she can see from walking off.
+@(test)
+a_line_only_a_host_sees_does_not_keep_anybody_here :: proc(t: ^testing.T) {
+	w := world_of(t, `scene yard
+walk 0,100 400,100 400,200 0,200
+side east to=yard span=120,180
+side west to=yard span=120,180
+obj moore pos=200,150 char=moore when=here,!late enters=west leaves=east
+obj moore pos=260,150 char=moore when=here seen=host
+`)
+	defer destroy_world(&w)
+	sc := current_scene(&w)
+	seen, host := &sc.objects[0], &sc.objects[1]
+	set_flag(&w, "here")
+	people_frames(&w)
+	testing.expect(t, host.hidden && host.host_sees)
+	set_flag(&w, "late")
+	testing.expect(t, seen.going, "off through the east side, not popped")
+}
+
 @(test)
 nobody_walks_off_in_a_room_she_is_not_in :: proc(t: ^testing.T) {
 	w := world_of(t, "scene elsewhere\nwalk 0,100 400,100 400,200 0,200\n", YARD)

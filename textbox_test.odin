@@ -16,7 +16,7 @@ a_line_break_the_caller_asked_for_is_kept :: proc(t: ^testing.T) {
 
 @(test)
 a_long_line_still_wraps_inside_its_own_break :: proc(t: ^testing.T) {
-	lines := wrap_text("PEOPLE\nMarchmont, M. Question eleven: no, never.", 20)
+	lines := wrap_text("PEOPLE\nSmith, J. Question eleven: no, never.", 20)
 	testing.expect_value(t, lines[0], "PEOPLE")
 	testing.expect(t, len(lines) >= 3, "the long entry should have wrapped")
 	for l in lines do testing.expect(t, len(l) <= 20, "a line came out wider than asked for")

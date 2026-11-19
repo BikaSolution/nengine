@@ -101,7 +101,7 @@ update_people :: proc(w: ^World, scene: ^Scene, dt: f32) {
 			}
 			continue
 		}
-		if o.hidden {
+		if o.hidden && !o.host_sees {
 			// Not here: stop walking and forget where they had got to.
 			o.actor.moving = false
 			actor_stop_anim(&o.actor)

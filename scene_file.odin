@@ -182,6 +182,8 @@ parse_scene :: proc(text: string, assets: ^Assets) -> (s: Scene, ok: bool) {
 				whole   = field_bool(l, "whole"),
 				depth   = parse_depth(field_or_text(l, "depth", "normal")),
 			}
+			// `seen=host`: drawn only in a ridden host's view (ride.odin).
+			o.host_only = field_or_text(l, "seen", "") == "host"
 			// Coming and going through a side: `enters=south leaves=east`.
 			if v, has := field(l, "enters"); has {
 				if d, good := compass_of(v); good do o.enters = d
@@ -504,6 +506,7 @@ scene_text :: proc(s: ^Scene, allocator := context.temp_allocator) -> string {
 		if o.glow do strings.write_string(&b, " glow=true")
 		if o.show do strings.write_string(&b, " show=true")
 		if o.whole do strings.write_string(&b, " whole=true")
+		if o.host_only do strings.write_string(&b, " seen=host")
 		if o.depth != .Normal do fmt.sbprintf(&b, " depth=%v", depth_text(o.depth))
 		if d, has := o.enters.?; has do fmt.sbprintf(&b, " enters=%v", COMPASS_WORDS[d])
 		if d, has := o.leaves.?; has do fmt.sbprintf(&b, " leaves=%v", COMPASS_WORDS[d])

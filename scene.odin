@@ -217,6 +217,11 @@ Object :: struct {
 	// times a second. Zero means shown, so an object built in code with no
 	// condition at all is simply here. See refresh_world.
 	hidden:      bool,
+	// `seen=host`: only a ridden host ever sees it (ride.odin). To everything
+	// else, her own eyes included, it is hidden whatever `only` says;
+	// `host_sees` is `only`, for the host's view to draw it by.
+	host_only:   bool,
+	host_sees:   bool,
 
 	// A person coming and going through a side (side.odin): `enters=` and
 	// `leaves=` from the file. `going`: walking off, and already gone as far
@@ -362,6 +367,11 @@ refresh_scene :: proc(w: ^World, scene: ^Scene) {
 	}
 	for &o, i in scene.objects {
 		now := (!condition_met(w, o.only) || o.away) && !o.held
+		if o.host_only {
+			// Never here, so it never walks on or off either.
+			o.host_sees, o.hidden = !now, true
+			continue
+		}
 		if live && o.walks && now != o.hidden && !person_stays(w, scene, i, now, was) do person_moves(scene, &o, now)
 		o.hidden = now
 	}
@@ -493,6 +503,16 @@ draw_drift :: proc(d: Drift, light: Light, tint: Palette_Map, plain: bool, time:
 	if !raw do end_tint()
 }
 
+// Whether a room's drawing includes this object: shown, or walking off
+// through a side; and a `seen=host` thing only when a host's view is drawn
+// (`drawing_host_view`, set by ride.odin's draw_host_view and nowhere else:
+// her own eyes, the handover going under and coming back, peeps and probes
+// all draw with it false).
+object_drawn :: proc(o: ^Object, host_view: bool) -> bool {
+	if o.host_only do return host_view && o.host_sees
+	return !o.hidden || o.going
+}
+
 @(private)
 draw_room :: proc(w: ^World, scene: ^Scene, player: bool) {
 	light := room_light(w, scene)
@@ -537,7 +557,7 @@ draw_room :: proc(w: ^World, scene: ^Scene, player: bool) {
 		// A thing with depth of its own goes at its farthest line (priority.odin).
 		y := own_depth_line(&o) if o.own_depth != nil else o.pos.y + o.base
 		// Somebody walking off through a side is gone, but still drawn.
-		if !o.hidden || o.going do append(&items, Item{o.depth, y, i, i, false})
+		if object_drawn(&o, drawing_host_view) do append(&items, Item{o.depth, y, i, i, false})
 	}
 	if player do append(&items, Item{.Normal, w.player.pos.y, len(scene.objects), -1, false})
 	// Whoever has been called into sight to speak to her (sight.odin).

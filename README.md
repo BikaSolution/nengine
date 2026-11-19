@@ -1421,7 +1421,8 @@ lines about one find are one find. `discover` is `note` that always costs.
 `!ticks HH:MM` in the harness steps the clock turn by turn to that hour and
 prints what each turn changed — or `NOTHING CHANGED` and why it stopped (a
 flag with nobody visibly different, or as far as a turn goes). It is the list
-of what a game has still to fill.
+of what a game has still to fill. A `seen=host` thing counts as drawn while its
+`when=` holds: a host sees it, so its coming and going is a change.
 
 ## Beats: what happens at an hour
 
@@ -1534,8 +1535,9 @@ of light at midnight. Put them `depth=back`, behind the people they light.
 see (`World.light`) changes only through a door to or from an indoor room, or
 when the game cuts with `relight(w)`; nobody stands on a lawn and watches it
 go dark. Two lights behind, the next doorway between outdoor rooms catches up.
-A new game, a restore and `set_clock` are cuts. Another room seen through a
-host's eyes is drawn in the light it is in now.
+A new game, a restore and `set_clock` are cuts. A room seen through a
+host's eyes is drawn in the light it is in now, the room her body is in
+included: only her own eyes are latched.
 
 `!light night` in the harness shows the room you are in in that light,
 whatever the clock says.
@@ -1762,7 +1764,8 @@ game's flags; what a side adds is how they leave and arrive in front of her:
   a cut never casts somebody mid-walk, nor do they finish a walk after it.
 - **Changing lines on one screen is a swap**, never a walk: a person whose
   line goes while another line of theirs is in sight (a chair, a pose), or
-  comes while another was, is changed over at once (`person_stays`).
+  comes while another was, is changed over at once (`person_stays`). A
+  `seen=host` line is never in sight, so it never makes a swap.
   `enters=` and `leaves=` are for leaving the screen.
 - **`step cook leave east`** in a routine walks them off for good, until the
   room is next entered.
@@ -1910,6 +1913,15 @@ w.hosts = HOSTS[:] // ne.Host{name = "stoat", from = 20*60, until = 28*60, camer
 - People keep to their routines in the room she is looking into and in the room
   she is sitting in. Nothing else moves: she does not walk, and neither does
   the clock unless the game ticks it.
+- **Something only a host sees:** `seen=host` on an `obj` line
+  (`obj figure pos=650,530 char=x pose=crouch when=late seen=host`). It is drawn
+  in a host's view whenever its `when=` holds, and nowhere else: not in her own
+  eyes, not in the handover going under or coming back (which draw her own
+  room), not through a peep. To everything else it is not here at all: the
+  parser, nearness, blocking, sight, cuts and the audits pass it by, and it
+  never walks on or off. A flag the game sets when RIDE starts is not the same
+  thing: the handover draws her own room with it already on, and a host
+  looking into the room her body is in would flash the figure in and out.
 
 `ne.first_time(w, "refused_a_name")` is for the refusals: true once, then false
 for good, and it is a flag, so it saves.

@@ -622,7 +622,7 @@ person_moves :: proc(sc: ^Scene, o: ^Object, gone: bool) {
 person_stays :: proc(w: ^World, sc: ^Scene, i: int, gone: bool, was: []bool) -> bool {
 	me := sc.objects[i]
 	for o, j in sc.objects {
-		if j == i || !o.walks || o.char_name != me.char_name do continue
+		if j == i || !o.walks || o.char_name != me.char_name || o.host_only do continue // a host's alone: not in sight
 		if gone {
 			if condition_met(w, o.only) && !o.away do return true
 		} else if j < len(was) && was[j] {

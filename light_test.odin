@@ -38,6 +38,25 @@ nobody_watches_the_lawn_go_dark :: proc(t: ^testing.T) {
 	testing.expect_value(t, w.light, Light.Night)
 }
 
+// A host is not behind a door: looking down into the room her body is in, it
+// sees the hour's light, while her own eyes keep what they last saw.
+@(test)
+a_host_sees_the_hours_light_in_her_own_room :: proc(t: ^testing.T) {
+	w := grounds()
+	defer destroy_world(&w)
+	now = .Sunset
+	relight(&w)
+	now = .Night
+	tick(&w) // on the lawn: one behind, and it waits
+	lawn := current_scene(&w)
+	testing.expect_value(t, room_light(&w, lawn), Light.Sunset) // her own eyes
+	drawing_host_view = true
+	testing.expect_value(t, room_light(&w, lawn), Light.Night) // a host's
+	drawing_host_view = false
+	testing.expect_value(t, room_light(&w, lawn), Light.Sunset)
+	testing.expect_value(t, w.light, Light.Sunset) // and nothing was latched by looking
+}
+
 @(test)
 two_behind_catches_up_at_the_next_doorway :: proc(t: ^testing.T) {
 	w := grounds()
