@@ -431,7 +431,7 @@ words_read :: proc(q: ne.Cue, words_there: int) -> int {
 	case .Line:                  return 3 // line NODE N-M
 	case .Shot:                  return 2 if q.text == "" else min(3, max(words_there, 2)) // shot off, shot NAME [FRAME]
 	case .Shake:                 return 3 // camera shake SECS
-	case .Walk_To, .Face, .Leave: return 3 // WHO walk_to X,Y, WHO leave DIR
+	case .Walk_To, .Face, .Leave, .Hold: return 3 // WHO walk_to X,Y, WHO leave DIR, WHO hold PART
 	case .Play:                  return min(4, max(words_there, 3)) // WHO play PART [N]
 	case .Say, .Think, .Narrate: return -1
 	}

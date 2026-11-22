@@ -168,6 +168,7 @@ begin_step :: proc(w: ^World, o: ^Object, scene: ^Scene) {
 	switch step.kind {
 	case .Walk_To:
 		walk_to(&o.actor, step.to)
+		walk_keeps_pair(&o.actor) // a case carried, a chair left (actor.odin)
 	case .Play:
 		// From its first frame. `once` and `3x` wait for it to finish; a number
 		// of seconds goes round until they are up. See anim.odin.

@@ -28,6 +28,15 @@ import rl "vendor:raylib"
 // as fast as it moves, so a planted foot stays planted (actor.odin); without
 // it the part plays at its fps.
 //
+// `faces=left` (front, back, right) says which way a part is drawn, for an
+// extra whose name does not say it (`sack_walk`, not `sack_walk_right`; the
+// name wins when it does). `mirror=ok` lets the engine flip the part for the
+// other side, for a carry that looks the same both ways (two buckets) and
+// whose light and details are the same both ways too: a flip mirrors the lit
+// side, a strap, a parting. Both are read only when somebody walks holding a
+// pose (actor.odin, the walk pair). nart's character editor does not set
+// them (nor `step=`): they are written by hand.
+//
 // The character editor in nart writes these. Games ask for a part by
 // name: assets_char_part(&assets, "potato", "walk_left").
 
@@ -101,6 +110,8 @@ Character_Part :: struct {
 	name: string,
 	fps:  f32,
 	step: f32, // art pixels one stride covers (walks); 0: play at fps
+	faces:  Maybe(Facing), // `faces=`: the way it is drawn, when the name does not say
+	mirror: bool,          // `mirror=ok`: may be flipped for the other side
 	data: Sprite_Data,
 }
 
@@ -169,7 +180,7 @@ character_copy_part :: proc(c: ^Character, from, to: string) -> ^Character_Part 
 	append(&data.holds, ..src.data.holds[:])
 	fps, step := src.fps, src.step
 
-	append(&c.parts, Character_Part{name = strings.clone(to), fps = fps, step = step, data = data})
+	append(&c.parts, Character_Part{name = strings.clone(to), fps = fps, step = step, faces = src.faces, mirror = src.mirror, data = data})
 	return &c.parts[len(c.parts) - 1]
 }
 
@@ -293,6 +304,12 @@ parse_character :: proc(text: string) -> (c: Character, ok: bool) {
 				data = sprite_data_new(l.words[0], w, h, frames),
 			})
 			part = &c.parts[len(c.parts) - 1]
+			if v, has := field(l, "faces"); has {
+				switch v {
+				case "front", "back", "left", "right": part.faces = parse_facing(v)
+				}
+			}
+			if v, has := field(l, "mirror"); has do part.mirror = v == "ok"
 			// Every part shares the character's palette.
 			clear(&part.data.palette)
 			append(&part.data.palette, ..palette[:])
@@ -367,6 +384,8 @@ character_text :: proc(c: ^Character, allocator := context.temp_allocator) -> st
 		fmt.sbprintf(&b, " frames=%v", p.data.frames)
 		if p.fps != 0 do fmt.sbprintf(&b, " fps=%v", p.fps)
 		if p.step != 0 do fmt.sbprintf(&b, " step=%v", p.step)
+		if f, has := p.faces.?; has do fmt.sbprintf(&b, " faces=%v", facing_text(f))
+		if p.mirror do strings.write_string(&b, " mirror=ok")
 		strings.write_byte(&b, '\n')
 		for f in 0 ..< p.data.frames {
 			fmt.sbprintf(&b, "frame %v", f)
@@ -399,6 +418,8 @@ Part_Art :: struct {
 	fps:    f32,
 	step:   f32, // art pixels a stride covers; see Character_Part
 	holds:  []i32, // ticks per frame; nil when every frame shows for one. See anim.odin
+	faces:  Maybe(Facing), // see Character_Part
+	mirror: bool,
 }
 
 character_art_destroy :: proc(a: ^Character_Art) {
@@ -410,6 +431,20 @@ character_art_destroy :: proc(a: ^Character_Art) {
 	delete(a.parts)
 	delete(a.name)
 	a^ = {}
+}
+
+// One part of a .char as the game draws it, given its picture: its speed, its
+// stride, its frame holds, and which way it is drawn and whether it may be
+// flipped (the walk pair, actor.odin).
+part_art_of :: proc(p: ^Character_Part, sprite: Sprite) -> Part_Art {
+	return {
+		sprite = sprite,
+		fps    = p.fps,
+		step   = p.step,
+		holds  = sprite_data_holds(&p.data),
+		faces  = p.faces,
+		mirror = p.mirror,
+	}
 }
 
 // One pose, ready to draw. Missing parts come back empty rather than
@@ -427,14 +462,7 @@ assets_load_character :: proc(a: ^Assets, path: string, scale: f32 = 1) -> bool 
 
 	art := Character_Art{name = strings.clone(c.name)}
 	art.parts = make(map[string]Part_Art)
-	for &p in c.parts {
-		art.parts[strings.clone(p.name)] = {
-			sprite = sprite_data_to_sprite(&p.data, scale),
-			fps    = p.fps,
-			step   = p.step,
-			holds  = sprite_data_holds(&p.data),
-		}
-	}
+	for &p in c.parts do art.parts[strings.clone(p.name)] = part_art_of(&p, sprite_data_to_sprite(&p.data, scale))
 	if a.chars == nil do a.chars = make(map[string]Character_Art)
 	a.chars[strings.clone(c.name)] = art
 	return true

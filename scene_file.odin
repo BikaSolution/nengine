@@ -206,7 +206,11 @@ parse_scene :: proc(text: string, assets: ^Assets) -> (s: Scene, ok: bool) {
 				}
 				o.rest_pose = clone_field(l, "pose")
 				o.actor.pose = o.rest_pose
+				o.rest_walk = clone_field(l, "walk")
+				o.actor.walk_pose = o.rest_walk
+				o.actor.walk_for = o.rest_pose
 				o.rest_facing = o.actor.facing
+				o.actor.facing_left = o.actor.facing == .Left
 				if assets != nil {
 					if art, found := &assets.chars[char_name]; found do o.actor.character = art
 				}
@@ -501,6 +505,7 @@ scene_text :: proc(s: ^Scene, allocator := context.temp_allocator) -> string {
 			if o.actor.speed != 0 do fmt.sbprintf(&b, " speed=%v", o.actor.speed)
 			fmt.sbprintf(&b, " facing=%v", facing_text(o.actor.facing))
 			if o.rest_pose != "" do fmt.sbprintf(&b, " pose=%v", o.rest_pose)
+			if o.rest_walk != "" do fmt.sbprintf(&b, " walk=%v", o.rest_walk)
 		}
 		if o.base != 0 do fmt.sbprintf(&b, " base=%v", o.base)
 		if o.glow do strings.write_string(&b, " glow=true")
@@ -718,6 +723,7 @@ free_scene_strings :: proc(s: ^Scene) {
 		delete(o.only)
 		delete(o.char_name)
 		delete(o.rest_pose)
+		delete(o.rest_walk)
 		delete(o.peep.into)
 		delete(o.peep.dress)
 		delete(o.peep.blind)

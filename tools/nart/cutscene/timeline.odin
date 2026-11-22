@@ -140,6 +140,7 @@ cue_colour :: proc(a: ne.Cue_Action, picked: bool) -> rl.Color {
 	case .Shake:   base = {240, 150, 130, 255}
 	case .Sound:   base = {240, 190, 120, 255}
 	case .Leave:   base = {120, 230, 230, 255}
+	case .Hold:    base = {190, 210, 130, 255}
 	case .End:     base = {200, 200, 210, 255}
 	}
 	if picked do return base
@@ -170,6 +171,7 @@ cue_label :: proc(q: ne.Cue) -> string {
 	case .Shake:   return fmt.tprintf("shake %.1f", q.amount)
 	case .Sound:   return fmt.tprintf("sound %v", q.text)
 	case .Leave:   return fmt.tprintf("leave %v", ne.COMPASS_WORDS[q.dir])
+	case .Hold:    return fmt.tprintf("hold %v", q.text if q.text != "" else "-")
 	case .End:     return "end"
 	}
 	return ""
@@ -188,6 +190,7 @@ action_name :: proc(a: ne.Cue_Action) -> string {
 	case .Shake:   return "shake"
 	case .Sound:   return "sound"
 	case .Leave:   return "leave"
+	case .Hold:    return "hold"
 	case .End:     return "end"
 	}
 	return "?"

@@ -571,7 +571,7 @@ person_leave :: proc(sc: ^Scene, o: ^Object, d: Compass) -> bool {
 	o.going = true
 	o.going_from = o.actor.pos
 	actor_stop_anim(&o.actor)
-	o.actor.pose = ""
+	walk_keeps_pair(&o.actor) // off carrying what they carry; anything else put down
 	walk_legs(&o.actor, []Leg{{b, false}, {beyond, true}})
 	o.actor.sink = b.y if d == .North else 0
 	return true
@@ -588,6 +588,9 @@ person_enter :: proc(sc: ^Scene, o: ^Object, d: Compass) -> bool {
 	o.coming = true
 	o.coming_to = to
 	actor_stop_anim(&o.actor)
+	// On carrying what their line carries; a pose with no walk (sitting,
+	// kneeling) is taken on arrival (settle_coming), not slid in.
+	walk_keeps_pair(&o.actor)
 	o.actor.pos = beyond
 	o.pos = beyond
 	walk_legs(&o.actor, []Leg{{b, true}, {to, false}})
@@ -656,8 +659,8 @@ people_arrive :: proc(w: ^World) {
 @(private)
 settle_going :: proc(o: ^Object) {
 	o.going = false
-	// Walking cleared their pose (person_leave): back to their line's, for
-	// whenever they are next in sight.
+	// Walking may have put their pose down (person_leave): back to their
+	// line's, for whenever they are next in sight.
 	o.actor.pose = o.rest_pose
 	o.actor.facing = o.rest_facing
 	o.actor.facing_left = o.rest_facing == .Left
@@ -730,7 +733,7 @@ cut_leave :: proc(w: ^World, sc: ^Scene, who: string, a: ^Actor, d: Compass) {
 	}
 	walk_legs(a, []Leg{{b, true}, {beyond, true}})
 	a.straight = true
-	a.pose = ""
+	walk_keeps_pair(a)
 	actor_stop_anim(a)
 	a.sink = b.y if d == .North else 0
 	if w == nil do return

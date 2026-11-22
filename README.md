@@ -1217,6 +1217,53 @@ borrows the pose for its own step and hands `sit` back afterwards.
 `pos` is still the field everything reads — drawing order, blocking, how near
 the player is — and the actor keeps it up to date as they go.
 
+### Holding a pose while walking: the walk pair
+
+A held pose is a pair, a stand and a walk, and it sticks to the person, as
+AGS's `ChangeView`, SCUMM's walk and stand frames and SCI's view swap did it.
+The stand is the line's `pose=`; the walk is the line's `walk=` (`obj porter
+... pose=rifle walk=rifle_march`), else the pose itself when it is a walk (a
+part with `step=`: `pose=sack_walk`), else `<pose>_walk` (`pose=coat` walks in
+`coat_walk`). **Every walk the engine starts keeps a pose that has a walk and
+puts down one that has none** (`walk_keeps_pair`): a routine's `walk_to`,
+coming on (`enters=`), going off (`leaves=`, a routine's `leave`), a cut's
+`walk_to` and `leave`, and somebody called back on their way out. So a case is
+carried off through the side; a man in a chair walks on standing and sits on
+arrival, never sliding in seated; and a cut walks the cook off with the tray
+he was holding. A pose with no walk comes back when they arrive: their line's
+on arrival, the routine's next step, or their line again when they are next
+in sight.
+
+On the walk, the version drawn is chosen in the classic engines' order
+(`pair_turned`): the carry is never dropped while a version of it will do,
+and a part that says which way it faces never walks backwards:
+
+1. that way's own version (`sack_walk_right` going right);
+2. the part itself, if it is drawn that way: its `faces=`, or, when exactly one
+   side of it is drawn beside it, the other side (`sack_walk` beside
+   `sack_walk_right` faces left);
+3. going up or down the screen with neither: the side they last faced, as they
+   were drawn on it (flipped, if it was), then the other side, then the part
+   as drawn when nobody has said which way it faces;
+4. going sideways: the other side's version flipped, only if that part says
+   `mirror=ok` (two buckets, two cases: a carry whose light and details are the
+   same both ways, because a flip mirrors the lit side, a strap, a parting
+   too); then the part as drawn when nobody has said which way it faces;
+5. the plain walk, when the pair has nothing for that way.
+
+The pair is drawn on any walk: to a spot, or by the arrow keys. Standing on
+their line nothing changes: the pose as drawn, or its version for the way
+they face, never mirrored. A pose moved by the game's own code (a fall, a
+ride) is drawn as it always was. A line's `walk=` goes with the line's own
+`pose=`: anything else they come to hold (a cut's `hold`, a routine's `play`)
+is carried in its own walk.
+
+Every part a world names can be checked against the `.char` it will wear:
+`ne.part_faults(scenes, cuts, chars)` lists each `pose=`, `walk=`, routine
+`play`, and cut `hold` and `play` that names a part nobody drew, for a game's
+own tests (a misspelt part is otherwise silent: a walk falls back, a pose
+draws nobody).
+
 ## Score, and how long it took
 
 A mystery is scored on what the player worked out, so the points go on the
@@ -2415,6 +2462,16 @@ line of narration, say a dialogue node's lines, put up a painted shot, shake
 the camera, name a sound, or end the thing; anything more belongs to a
 trigger.
 
+**`0.00 porter hold carry_case` gives somebody a pose to hold**, carried on
+every walk after it (the walk pair, under People are objects that walk) until
+`hold -` puts it down (a bare `hold` is no cue). The held part is carried in
+its own walk (itself, if it is a walk, else `<part>_walk`), never in the line's
+`walk=`. A cut's `walk_to` keeps a held pose that has a walk and puts down one
+that has none, as every walk the engine starts does; `play` is a one-off that
+a walk stops. **A hold lasts this cut only:** the room's people are put back
+as they stood when the cut ends, and so is what she held, if a `hold` gave her
+something; the next cut of a chain starts its extras empty-handed.
+
 **`line` says a node's lines, so a cutscene never copies the script.** The
 words stay in the writers' Markdown (Dialogue nodes, above) and the cut says
 which of them, and when:
@@ -2793,6 +2850,14 @@ part, the pose itself shows whichever way they face.
 
 A walking pose held by somebody standing still (`pose=lamp_walk` on a person at a gap) stands on
 its first passing frame, a quarter of the way round, legs together; it walks only while they move.
+
+Two fields on a `part` line are for walking while holding a pose (the walk pair, under People
+are objects that walk): `faces=left` (`front`, `back`, `right`) says which way a part is drawn,
+for one whose name does not say it (`sack_walk`; a name such as `sack_walk_right` always wins),
+and `mirror=ok` lets the engine flip the part for the other side, for a carry that looks the same
+both ways, light included: a flip mirrors the lit side and any one-sided detail too. Without
+`mirror=ok` nothing is ever mirrored. Copying a part copies both. nart's character editor does
+not set either (nor `step=`): write them into the `part` line by hand.
 A part is a walk when it has a `step=`. Somebody who walks on through a side (`enters=`) turns, once there, to the
 `facing=` of their line, the way they turn to its `pose=`.
 

@@ -189,6 +189,9 @@ Object :: struct {
 	// a guest in a chair, a man on a step. A routine's `play` borrows the
 	// actor's pose for its own step and gives this back.
 	rest_pose:   string,
+	// `walk=coat_walk`: the walk their pose is carried in (the walk pair,
+	// actor.odin), when it is not the pose itself or `<pose>_walk`.
+	rest_walk:   string,
 	// `facing=`: the way they face standing on their line, turned back to when
 	// they arrive from walking on (side.odin), whichever way they walked.
 	rest_facing: Facing,

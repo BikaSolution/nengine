@@ -265,7 +265,7 @@ commit :: proc(e: ^Editor, t: Target, value: string, status: ^ui.Status) {
 	case .Cue_Part:
 		if !cue do break
 		if w := one_word(v); w != "" {
-			q.text = w
+			q.text = "" if q.action == .Hold && w == "-" else w // `hold -` puts it down
 			doc_set_cue(d, t.i, q)
 		}
 	case .Cue_Times:

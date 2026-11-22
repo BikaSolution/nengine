@@ -397,7 +397,7 @@ cast_panel :: proc(l: ^Lay, i: int) {
 
 // --- A cue ---
 
-PERSON_KINDS :: bit_set[ne.Cue_Action]{.Walk_To, .Face, .Play, .Say, .Think, .Leave}
+PERSON_KINDS :: bit_set[ne.Cue_Action]{.Walk_To, .Face, .Play, .Say, .Think, .Leave, .Hold}
 
 @(private = "file")
 cue_panel :: proc(l: ^Lay, i: int) {
@@ -521,6 +521,30 @@ cue_panel :: proc(l: ^Lay, i: int) {
 			from := person_at(e, m, q.at)
 			note(l, fmt.tprintf("from %v: %.1fs at %v a second. Drag the ring on the stage to move it", vec_text(from), rl.Vector2Distance(from, q.to) / member_speed(e, m), member_speed(e, m)))
 		}
+	case .Hold:
+		// What they hold from here, carried on every walk (the walk pair);
+		// `-` puts it down.
+		m := doc_member(d, q.who)
+		char := cast_view(e, m).char if m >= 0 else ""
+		poses := ac.art_char_poses(&e.art, char)
+		now := q.text if q.text != "" else "-"
+		if len(poses) > 0 {
+			parts := make([dynamic]string, context.temp_allocator)
+			append(&parts, "-")
+			append(&parts, ..poses)
+			if picked, ok := choice(l, "part", parts[:], now); ok && picked != now {
+				mark(e)
+				q.text = "" if picked == "-" else picked
+				doc_set_cue(d, i, q)
+				changed(e)
+				return
+			}
+		} else {
+			field(l, "part", fmt.tprintf("cue%v.part", i), now, {.Cue_Part, i})
+			if stale(l) do return
+			note(l, "no character to choose a part from; - puts it down")
+		}
+		note(l, "carried on every walk until another hold, in its own walk; a part with no walk is put down at the first walk; this cut only")
 	case .Play:
 		// Which part: the poses their character has.
 		m := doc_member(d, q.who)
@@ -625,6 +649,7 @@ change_kind :: proc(e: ^Editor, i: int, a: ne.Cue_Action, status: ^ui.Status) {
 	case .Sound:   q.text = "?"
 	case .Shake:   if q.amount <= 0 do q.amount = 0.4
 	case .Leave:   q.dir = .East
+	case .Hold:    q.text = ""
 	case .Shot:    q.text, q.frame = "", 0
 	case .Say, .Think, .Narrate, .End:
 	}

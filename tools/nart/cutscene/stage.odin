@@ -141,14 +141,24 @@ person_walk :: proc(e: ^Editor, who: int, t: f32) -> (pos: [2]f32, heading: [2]f
 	return
 }
 
-// The pose somebody is drawn in at time `t`, and which frame of it: a part
-// being played, a walk, or standing the way they last turned.
-person_pose :: proc(e: ^Editor, who: int, t: f32) -> (part: string, frame: f32) {
+// The pose somebody is drawn in at time `t`, which frame of it, and whether it
+// is flipped: a part being played, a walk, or standing the way they last
+// turned; holding what their room line or a `hold` cue gives them, as the game
+// draws it (held_part).
+person_pose :: proc(e: ^Editor, who: int, t: f32) -> (part: string, frame: f32, flip: bool) {
 	v := cast_view(e, who)
 	name := e.doc.people[who].m.name
 	facing := v.facing
+	facing_left := facing == .Left
 	playing := ""
 	since := f32(0)
+	// What they hold: their room line's pose and walk=, then each hold.
+	held, walk_pose, walk_for := "", "", ""
+	if v.person >= 0 {
+		o := e.room.objects[v.person]
+		held, walk_pose, walk_for = o.rest_pose, o.rest_walk, o.rest_pose
+	}
+	c := ac.art_char_data(&e.art, v.char)
 	for i in e.doc.order {
 		q := e.doc.cues[i].q
 		if q.at > t do break
@@ -156,6 +166,7 @@ person_pose :: proc(e: ^Editor, who: int, t: f32) -> (part: string, frame: f32) 
 		#partial switch q.action {
 		case .Face:
 			facing = q.facing
+			if facing == .Left || facing == .Right do facing_left = facing == .Left
 			playing = ""
 		case .Play:
 			if t < q.at + play_secs(e, v.char, q) {
@@ -163,17 +174,56 @@ person_pose :: proc(e: ^Editor, who: int, t: f32) -> (part: string, frame: f32) 
 			} else if playing == q.text {
 				playing = ""
 			}
+		case .Hold:
+			held = q.text
+			playing = ""
+		case .Walk_To, .Leave:
+			// Every walk keeps a pose with a walk and puts any other down.
+			playing = ""
+			if _, _, paired := held_part(c, held, walk_pose, walk_for, .Front, false, true); !paired do held = ""
 		}
 	}
 	_, heading := person_walk(e, who, t)
-	if playing != "" do return playing, (t - since)
+	if playing != "" do return playing, (t - since), false
 	if heading != {} {
 		dir := "front"
-		if abs(heading.x) > abs(heading.y) do dir = "right" if heading.x > 0 else "left"
-		else do dir = "front" if heading.y > 0 else "back"
-		return fmt.tprintf("walk_%v", dir), t
+		if abs(heading.x) > abs(heading.y) {
+			dir = "right" if heading.x > 0 else "left"
+			facing = .Right if heading.x > 0 else .Left
+			facing_left = heading.x < 0
+		} else {
+			dir = "front" if heading.y > 0 else "back"
+			facing = .Front if heading.y > 0 else .Back
+		}
+		if held != "" {
+			if p, f, ok := held_part(c, held, walk_pose, walk_for, facing, facing_left, true); ok && p != "" do return p, t, f
+		}
+		return fmt.tprintf("walk_%v", dir), t, false
 	}
-	return ne.facing_text(facing), t
+	if held != "" {
+		if p, _, ok := held_part(c, held, walk_pose, walk_for, facing, facing_left, false); ok do return p, t, false
+	}
+	return ne.facing_text(facing), t, false
+}
+
+// What the game draws for somebody holding `held` (the walk pair,
+// nengine/actor.odin), asked of the engine's own rules over the character's
+// parts as read: walking, the pair's walk turned the way they go ("" with ok
+// for the plain walk, when nothing of it goes that way); standing, the held
+// part or its version for the way they face. `ok` false: walking, the pose
+// has no walk at all (a walk puts it down).
+held_part :: proc(c: ^ne.Character, held, walk_pose, walk_for: string, facing: ne.Facing, facing_left, walking: bool) -> (part: string, flip: bool, ok: bool) {
+	if c == nil || held == "" do return "", false, false
+	art := ne.Character_Art{parts = make(map[string]ne.Part_Art, allocator = context.temp_allocator)}
+	for &p in c.parts {
+		art.parts[p.name] = {sprite = {texture = {id = 1}, frames = p.data.frames}, fps = p.fps, step = p.step, faces = p.faces, mirror = p.mirror}
+	}
+	a := ne.Actor{character = &art, pose = held, walk_pose = walk_pose, walk_for = walk_for, facing = facing, facing_left = facing_left}
+	if !walking do return ne.actor_turned(a, held), false, true
+	walk := ne.pose_walk(a) or_return
+	name, flipped, found := ne.pair_turned(a, walk)
+	if !found do return "", false, true
+	return name, flipped, true
 }
 
 // How long a `play` cue holds its part: its seconds, or its times through
@@ -328,7 +378,7 @@ draw_person :: proc(e: ^Editor, i: int) {
 	p := ui.to_screen(e.view, person_at(e, i, e.t))
 	drawn := false
 	if v.char != "" {
-		part, secs := person_pose(e, i, e.t)
+		part, secs, flip := person_pose(e, i, e.t)
 		s := ac.art_char_part(&e.art, v.char, part)
 		fps := f32(8)
 		if c := ac.art_char_data(&e.art, v.char); c != nil {
@@ -340,7 +390,7 @@ draw_person :: proc(e: ^Editor, i: int) {
 			w := f32(s.frame_w) * e.view.zoom
 			h := f32(s.frame_h) * e.view.zoom
 			frame := i32(secs * fps) % max(s.frames, 1)
-			ne.draw_sprite_pro(s, frame, {p.x - w / 2, p.y - h, w, h})
+			ne.draw_sprite_pro(s, frame, {p.x - w / 2, p.y - h, w, h}, flip = flip)
 			drawn = true
 		}
 	}

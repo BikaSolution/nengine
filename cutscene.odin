@@ -49,6 +49,7 @@ Cue_Action :: enum {
 	Shake,   // the camera
 	Sound,   // play a named sound
 	Leave,   // off through a side of the room and out of sight (side.odin)
+	Hold,    // hold a part as their pose, carried on every walk (the walk pair, actor.odin); `-` puts it down
 	End,     // stop here, whatever the last cue's time was
 }
 
@@ -58,7 +59,7 @@ Cue :: struct {
 	action: Cue_Action,
 	to:     [2]f32, // Walk_To
 	facing: Facing, // Face
-	text:   string, // Say, Think, Narrate, the sound's name for Sound, the node's id for Line, the sprite for Shot ("" is `off`)
+	text:   string, // Say, Think, Narrate, the sound's name for Sound, the node's id for Line, the sprite for Shot ("" is `off`), the part for Hold ("" is `-`)
 	amount: f32,    // Shake: how long. Play: seconds, when it is not `times`
 	times:  int,    // Play: how many times through; 0 is for `amount` seconds
 	lines:  [2]int, // Line: the first and last of the node's lines, counted from 1
@@ -267,6 +268,16 @@ parse_cue :: proc(raw: string, at: f32) -> (q: Cue, ok: bool) {
 		} else {
 			q.times = 1
 		}
+	case "hold":
+		// `0.0 porter hold carry_case`: carried on every walk until `hold -`.
+		// A `hold` naming nothing is no cue: `hold -` is how to put it down.
+		if len(l.words) < skip {
+			delete(q.who)
+			return {}, false
+		}
+		q.action = .Hold
+		part := l.words[skip - 1]
+		q.text = strings.clone("" if part == "-" else part)
 	case "leave":
 		// `4.0 margaret leave east`: off through that side (side.odin).
 		d, good := compass_of(l.words[skip - 1] if len(l.words) >= skip else "")
@@ -382,6 +393,8 @@ cue_body_text :: proc(q: Cue, allocator := context.temp_allocator) -> string {
 		return fmt.aprintf("sound %v", q.text, allocator = allocator)
 	case .Leave:
 		return fmt.aprintf("%v leave %v", q.who, COMPASS_WORDS[q.dir], allocator = allocator)
+	case .Hold:
+		return fmt.aprintf("%v hold %v", q.who, q.text if q.text != "" else "-", allocator = allocator)
 	case .Line:
 		b := strings.builder_make(allocator)
 		fmt.sbprintf(&b, "line %v %v", q.text, line_range_text(q.lines))
@@ -552,6 +565,9 @@ Cutscene_Player :: struct {
 	objs:         [dynamic]int,   // a Person's index among the room's objects
 	saved:        [dynamic]Actor, // and how they stood before it, to put back
 	player_speed: f32,
+	// What she held before a `hold` cue gave her something: put back after.
+	player_pose:  string,
+	player_held:  bool,
 	scene:        int,            // the room it is playing in
 	then:         proc(w: ^World),
 	// What she was on her way to do when it began: given back when it ends,
@@ -718,7 +734,7 @@ cue_fire :: proc(p: ^Cutscene_Player, w: ^World, q: Cue, mode: Cut_Mode, out: ^s
 	case .Walk_To:
 		if actor != nil {
 			walk_to(actor, q.to)
-			actor.pose = "" // nobody walks sitting down
+			walk_keeps_pair(actor) // nobody walks sitting down; a case is carried
 			actor_stop_anim(actor)
 		}
 	case .Face:
@@ -749,6 +765,15 @@ cue_fire :: proc(p: ^Cutscene_Player, w: ^World, q: Cue, mode: Cut_Mode, out: ^s
 		if mode == .Play do w.shake = max(w.shake, q.amount)
 	case .Sound:
 		if mode != .Quiet do play_sound(w, q.text)
+	case .Hold:
+		if actor != nil {
+			if w != nil && actor == &w.player && !p.player_held {
+				p.player_pose = w.player.pose
+				p.player_held = true
+			}
+			actor.pose = q.text
+			actor_stop_anim(actor)
+		}
 	case .Leave:
 		if actor != nil {
 			sc: ^Scene = nil
@@ -1176,6 +1201,7 @@ finish_cutscene :: proc(w: ^World, run_then := true) {
 			w.player.legs_len = 0
 			w.player.straight = false
 			actor_stop_anim(&w.player)
+			if p.player_held do w.player.pose = p.player_pose
 		case .Person:
 			if o := cast_object(p, w, i); o != nil {
 				o.actor = p.saved[i]

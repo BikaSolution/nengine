@@ -40,6 +40,13 @@ Actor :: struct {
 	// "cleaning", "reading". A routine sets it for the length of a step. See
 	// routine.odin.
 	pose:        string,
+	// The walk that goes with `pose` (a line's `walk=`): the pair a held
+	// thing is carried in, and the pose it was given for (the line's
+	// `pose=`). It is used only while they hold that pose: anything else
+	// they hold (a cut's `hold`, a routine's `play`) finds its own walk.
+	// "" lets the pose find its own (pose_walk).
+	walk_pose:   string,
+	walk_for:    string,
 
 	// A part being played once (or a few times, or for a while) over the top
 	// of the pose and the direction: picking up a cup, a wave. Started from
@@ -300,20 +307,30 @@ actor_picture :: proc(a: Actor) -> (s: Sprite, frame: i32, flip: bool) {
 				return part.sprite, frame, false
 			}
 		}
-		want := actor_turned(a, a.pose) if a.pose != "" else facing_part(a.facing, a.walking)
+		// On a walk, a held pose is carried in its pair's walk, turned the way
+		// they go (pair_turned); with nothing drawn that way, the plain walk.
+		want, plain := "", a.pose == "" // `flip` is the result's
+		if !plain && (a.moving || a.heading != {}) { // a walk to a spot, or by the keys
+			if walk, paired := pose_walk(a); paired {
+				name, mirrored, found := pair_turned(a, walk)
+				if found do want, flip = name, mirrored
+				else do plain = true
+			}
+		}
+		if want == "" do want = facing_part(a.facing, a.walking) if plain else actor_turned(a, a.pose)
 		part := a.character.parts[want]
 		// A walk nobody has drawn yet is the standing pose that way, sliding,
 		// rather than nobody at all.
-		if part.sprite.texture.id == 0 && a.pose == "" && a.walking do part = a.character.parts[facing_part(a.facing, false)]
+		if part.sprite.texture.id == 0 && plain && a.walking do part = a.character.parts[facing_part(a.facing, false)]
 		if part.sprite.texture.id != 0 {
 			// A walk held as a pose by somebody standing still (a lamp walk at a
 			// gap, a rifle walk at a post) stands on its first passing frame,
 			// legs together, rather than marching on the spot.
-			if part.step > 0 && !a.walking do return part.sprite, part.sprite.frames / 4, false
+			if part.step > 0 && !a.walking do return part.sprite, part.sprite.frames / 4, flip
 			fps := part.fps if part.fps > 0 else (a.walk_fps if a.walking else a.idle_fps)
 			if a.walking && part.step > 0 && a.speed > 0 do fps = walk_rate(a.speed, part.step, part.sprite)
 			frame, _ = anim_frame(a.anim_time, fps, part.sprite.frames, part.holds)
-			return part.sprite, frame, false
+			return part.sprite, frame, flip
 		}
 		// A pose that hasn't been drawn yet falls back to the sprites below,
 		// so a half-finished character is still playable.
@@ -331,6 +348,115 @@ actor_turned :: proc(a: Actor, name: string) -> string {
 	turned := pose_turned(name, a.facing)
 	if p, ok := a.character.parts[turned]; ok && p.sprite.texture.id != 0 do return turned
 	return name
+}
+
+// --- Holding a pose while walking: the walk pair ---
+//
+// A held pose is a pair, a stand and a walk, and it sticks to the person: a
+// case, a sack, a coat. The stand is the pose; the walk is the line's `walk=`,
+// else the pose itself when it is a walk (`step=`), else `<pose>_walk`. Every
+// walk the engine starts keeps a pose that has a walk and drops one that has
+// none (walk_keeps_pair): nobody walks sitting down, and nobody puts the case
+// down to cross a room. As AGS's ChangeView, SCUMM's walk and stand frames
+// and SCI's view swap did it.
+
+// The walk that goes with the pose they hold, if it has one drawn: the line's
+// `walk=` while they hold the line's own pose; else the pose itself, if it is
+// a walk; else `<pose>_walk` (a pose that is a walk wins over a `_walk` beside
+// it).
+pose_walk :: proc(a: Actor) -> (walk: string, ok: bool) {
+	if a.character == nil || a.pose == "" do return "", false
+	if a.walk_pose != "" && a.pose == a.walk_for && part_in_any_facing(a.character, a.walk_pose) do return a.walk_pose, true
+	if part_is_walk(a.character, a.pose) do return a.pose, true
+	paired := strings.concatenate({a.pose, "_walk"}, context.temp_allocator)
+	if part_in_any_facing(a.character, paired) do return paired, true
+	return "", false
+}
+
+// What a walk the engine starts does to the pose they hold: a pose with a
+// walk stays, to be carried; any other is put down until they arrive (their
+// line, or a routine's next step, gives it back).
+walk_keeps_pair :: proc(a: ^Actor) {
+	if _, ok := pose_walk(a^); !ok do a.pose = ""
+}
+
+// The version of a walk to draw going the way they face, and whether it is
+// flipped, in the classic engines' order: that way's own version; the part
+// itself if it is drawn that way; going up or down the screen, the side last
+// faced, then the other side, then the part as drawn if nobody said which way
+// that is; going sideways, the other side flipped if the part says
+// `mirror=ok`, then the part as drawn if nobody said which way it faces. A
+// side is tried as it is walked: its own drawing, else the other side's
+// flipped (with `mirror=ok`), so going up or down after a mirrored side keeps
+// the mirror.
+// Nothing: the plain walk is theirs (actor_picture).
+pair_turned :: proc(a: Actor, walk: string) -> (name: string, flip: bool, ok: bool) {
+	c := a.character
+	if c == nil do return "", false, false
+	if v := pose_turned(walk, a.facing); part_drawn(c, v) do return v, false, true
+	base := part_drawn(c, walk)
+	drawn_as, known := part_faces(c, walk)
+	if base && known && drawn_as == a.facing do return walk, false, true
+	switch a.facing {
+	case .Front, .Back:
+		last := Facing.Left if a.facing_left else Facing.Right
+		for side in ([2]Facing{last, other_side(last)}) {
+			if v := pose_turned(walk, side); part_drawn(c, v) do return v, false, true
+			if base && known && drawn_as == side do return walk, false, true
+			// That side as it is walked: the other side's drawing, flipped.
+			o := other_side(side)
+			if v := pose_turned(walk, o); part_drawn(c, v) && c.parts[v].mirror do return v, true, true
+			if base && known && drawn_as == o && c.parts[walk].mirror do return walk, true, true
+		}
+	case .Left, .Right:
+		other := other_side(a.facing)
+		if v := pose_turned(walk, other); part_drawn(c, v) && c.parts[v].mirror do return v, true, true
+		if base && known && drawn_as == other && c.parts[walk].mirror do return walk, true, true
+	}
+	if base && !known do return walk, false, true
+	return "", false, false
+}
+
+// Which way a part with no facing in its name is drawn: its `faces=`, or,
+// when exactly one side of it is drawn beside it (`sack_walk_right`), the
+// other side.
+part_faces :: proc(c: ^Character_Art, name: string) -> (f: Facing, ok: bool) {
+	if p, has := c.parts[name]; has {
+		if drawn, said := p.faces.?; said do return drawn, true
+	}
+	left := part_drawn(c, pose_turned(name, .Left))
+	right := part_drawn(c, pose_turned(name, .Right))
+	if left != right do return (.Right if left else .Left), true
+	return .Front, false
+}
+
+@(private = "file")
+other_side :: proc(f: Facing) -> Facing {
+	return .Right if f == .Left else .Left
+}
+
+@(private = "file")
+part_drawn :: proc(c: ^Character_Art, name: string) -> bool {
+	p, has := c.parts[name]
+	return has && p.sprite.texture.id != 0
+}
+
+// Drawn as itself or for any facing.
+@(private = "file")
+part_in_any_facing :: proc(c: ^Character_Art, name: string) -> bool {
+	if part_drawn(c, name) do return true
+	for f in Facing do if part_drawn(c, pose_turned(name, f)) do return true
+	return false
+}
+
+// A walk: the part, or a version of it, keeps its feet (`step=`).
+@(private = "file")
+part_is_walk :: proc(c: ^Character_Art, name: string) -> bool {
+	if p, has := c.parts[name]; has && p.sprite.texture.id != 0 && p.step > 0 do return true
+	for f in Facing {
+		if p, has := c.parts[pose_turned(name, f)]; has && p.sprite.texture.id != 0 && p.step > 0 do return true
+	}
+	return false
 }
 
 // The name of a pose's version drawn for one facing: `sack` facing right is

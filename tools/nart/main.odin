@@ -602,6 +602,7 @@ cue_line :: proc(q: ne.Cue) -> string {
 	case .Shake:   return fmt.tprintf("shake %.2f", q.amount)
 	case .Sound:   return fmt.tprintf("sound %v", q.text)
 	case .Leave:   return fmt.tprintf("leave %v", ne.COMPASS_WORDS[q.dir])
+	case .Hold:    return fmt.tprintf("hold %v", q.text if q.text != "" else "-")
 	case .End:     return "end"
 	}
 	return ""

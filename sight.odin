@@ -204,7 +204,7 @@ call_back :: proc(w: ^World, sc: ^Scene, cmd: Command) {
 		o.actor.legs_len = 0
 		o.actor.straight = false
 		o.actor.sink = 0
-		o.actor.pose = "" // standing, whatever their line had them doing
+		walk_keeps_pair(&o.actor) // standing, still carrying what they carry
 		o.pos = o.actor.pos
 		face_towards(&o.actor, w.player.pos - o.actor.pos)
 		return

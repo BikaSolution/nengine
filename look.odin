@@ -763,8 +763,7 @@ actor_sprite :: proc(a: Actor) -> Sprite {
 		if a.anim != "" {
 			if part := a.character.parts[actor_turned(a, a.anim)]; part.sprite.texture.id != 0 do return part.sprite
 		}
-		want := actor_turned(a, a.pose) if a.pose != "" else facing_part(a.facing, a.walking)
-		if part := a.character.parts[want]; part.sprite.texture.id != 0 do return part.sprite
+		if s, _, _ := actor_picture(a); s.texture.id != 0 do return s // a carry on its walk too
 		if part := a.character.parts[facing_part(a.facing, false)]; part.sprite.texture.id != 0 do return part.sprite
 	}
 	return a.walk if a.walking else a.idle
