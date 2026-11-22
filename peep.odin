@@ -154,6 +154,7 @@ Peep_State :: struct {
 	caught_by: string, // who catches her at line `stop`; "" for nobody
 	blind:     bool,   // the far side could not see out
 	announced: bool,   // the harness has said so
+	dressing:  bool,   // draw_far_room is wearing the far room another way
 }
 
 // The flag a window sets when it plays.
@@ -416,11 +417,13 @@ draw_far_room :: proc(w: ^World, v: Peep_View, half, band: f32) {
 	had := w.flags[v.dress]
 	for name in saved do w.flags[name] = false
 	w.flags[v.dress] = true
+	w.peeping.dressing = true
 	refresh_scene(w, sc)
 	draw_room_offscreen(w, sc, v, half, band)
 	for name in saved do w.flags[name] = true
 	w.flags[v.dress] = had
 	refresh_scene(w, sc)
+	w.peeping.dressing = false
 }
 
 @(private = "file")

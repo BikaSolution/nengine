@@ -160,6 +160,7 @@ save_world :: proc(w: ^World, s: ^Save, title: string) {
 	save_put_int(s, "clock", w.clock_ticks)
 	notebook_save(w, s)
 	ride_save(w, s)
+	sight_save(w, s)
 
 	if w.on_save != nil do w.on_save(w, s)
 }
@@ -243,6 +244,11 @@ load_world :: proc(w: ^World, text: string) -> bool {
 	}
 	clear_cut_handoff(w)
 	refresh_world(w)
+	// What she last saw people in, as it was when saved (and not what the
+	// rooms gone through on the way here wore, nor a line the old world had
+	// walked off); then whoever is drawn in the room she is restored into.
+	sight_load(w, &s)
+	if w.current >= 0 && w.current < len(w.scenes) do sight_note_drawn(w, &w.scenes[w.current])
 
 	// A save is not a death, and restoring is how you stop being dead.
 	w.dead, w.death_box, w.death_time = false, false, 0

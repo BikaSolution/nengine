@@ -358,7 +358,8 @@ destroy_world :: proc(w: ^World) {
 	clear_cut_handoff(w)
 	delete(w.sight.called)
 	delete(w.sight.off)
-	w.sight.called, w.sight.off = nil, nil
+	delete(w.sight.seen_as)
+	w.sight.called, w.sight.off, w.sight.seen_as = nil, nil, nil
 	delete(w.cut_handoff)
 }
 

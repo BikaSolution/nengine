@@ -373,7 +373,9 @@ refresh_scene :: proc(w: ^World, scene: ^Scene) {
 			continue
 		}
 		if live && o.walks && now != o.hidden && !person_stays(w, scene, i, now, was) do person_moves(scene, &o, now)
+		begins := o.hidden && !now
 		o.hidden = now
+		if begins do sight_note_line(w, &o) // in their new costume from now (sight.odin)
 	}
 	for &sc in scene.scenery do sc.hidden = !condition_met(w, sc.only)
 	for &e in scene.exits {
@@ -384,10 +386,14 @@ refresh_scene :: proc(w: ^World, scene: ^Scene) {
 	for &t in scene.triggers do t.hidden = !condition_met(w, t.only)
 	for &e in scene.edges do e.hidden = !condition_met(w, e.only)
 	for &win in scene.windows do win.hidden = !condition_met(w, win.only)
+	// Whoever is drawn in her room, in what (a call-in's art: sight.odin).
+	if w.current >= 0 && w.current < len(w.scenes) && scene == &w.scenes[w.current] do sight_note_drawn(w, scene)
 }
 
 refresh_world :: proc(w: ^World) {
 	for &s in w.scenes do refresh_scene(w, &s)
+	// Her room last: what she sees wins over a line beginning elsewhere.
+	if w.current >= 0 && w.current < len(w.scenes) do sight_note_drawn(w, &w.scenes[w.current])
 	note_open_awards(w)
 }
 

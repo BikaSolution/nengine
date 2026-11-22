@@ -1850,6 +1850,22 @@ keeps them together:
   line not said to her face: through a net, from the dark, from the top of a
   ladder. A speaker's first such line makes their later ones off too, until
   the screen is hers again. Left nil, every line is to her face.
+- **Called in as last seen.** A person can wear another `.char` on some of
+  their lines (`char=` a day dress on the afternoon's lines, the evening one
+  after dark). Somebody called into sight wears the art and pace of the line
+  she last saw them drawn on: every refresh of the room she is in notes, per
+  speaker, what each person drawn in it wears (`w.sight.seen_as`,
+  `sight_note_drawn`), and any line of theirs that begins to hold, in any
+  room, notes what they wear from then, during a peep too (`sight_note_line`;
+  only the far room worn another way for a frame is not noted), so a change of
+  costume counts wherever she is; her own room is noted last, so what she
+  sees wins. Somebody with neither yet in this game is called in in their
+  first line's art in the room order, as before. The record goes into a save
+  (`seen_as.N speaker<TAB>art<TAB>speed`), so a restore calls people in as
+  they were when she saved, and then as she sees them in the room she is
+  restored into, and a new game forgets it. A save from an older
+  build has no record: until a line of theirs begins or she sees them, the
+  first line's art.
 
 The harness settles all of it after every line (`sight_settle`: the called
 gone, the called-back on their way, the pops out of the picture), so
@@ -2310,7 +2326,8 @@ ne.autosave(&w, "the veranda")            // rolls, then writes
 ```
 
 The engine saves what the engine owns — which scene, where the player stands,
-which way they face, the clock, what "it" means — and the game's two hooks put
+which way they face, the clock, what "it" means, what she last saw each person
+wearing (In sight) — and the game's two hooks put
 its own state in and take it back out:
 
 ```odin

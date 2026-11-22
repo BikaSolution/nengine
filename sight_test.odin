@@ -237,3 +237,257 @@ the_watch_finds_a_ghost_and_not_a_person_in_sight :: proc(t: ^testing.T) {
 near_to_sight :: proc(a, b: [2]f32, by: f32 = 3) -> bool {
 	return abs(a.x - b.x) <= by && abs(a.y - b.y) <= by
 }
+
+// One person in two costumes, a line in each of two rooms (char= one way by
+// day, another in the evening), and a third room with no line of hers.
+@(private = "file")
+SEEN_DAY :: `scene day_room
+walk 0,100 1000,100 1000,200 0,200
+obj lucy pos=100,150 char=lucy when=!evening
+`
+
+@(private = "file")
+SEEN_EVENING :: `scene evening_room
+walk 0,100 1000,100 1000,200 0,200
+obj lucy pos=100,150 char=lucy_evening speed=90 when=evening
+`
+
+@(private = "file")
+SEEN_ELSEWHERE :: `scene elsewhere
+walk 0,100 1000,100 1000,200 0,200
+`
+
+// A porch where she sits in the day dress whenever a_porch holds, evening or not.
+@(private = "file")
+SEEN_PORCH :: `scene porch
+walk 0,100 1000,100 1000,200 0,200
+obj lucy pos=100,150 char=lucy when=a_porch
+`
+
+@(private = "file", thread_local)
+lucy_day_art: Character_Art
+
+@(private = "file", thread_local)
+lucy_evening_art: Character_Art
+
+@(private = "file", thread_local)
+seen_people: [2]Speaker
+
+@(private = "file", thread_local)
+seen_speakers: [2]^Speaker
+
+@(private = "file")
+seen_world :: proc(t: ^testing.T) -> World {
+	fake_art(&ada_art)
+	fake_art(&lucy_day_art)
+	fake_art(&lucy_evening_art)
+	lucy_day_art.name, lucy_evening_art.name = "lucy", "lucy_evening"
+	w: World
+	for text in ([]string{SEEN_DAY, SEEN_EVENING, SEEN_ELSEWHERE, SEEN_PORCH}) {
+		s, ok := parse_scene(text, nil)
+		testing.expect(t, ok)
+		append(&w.scenes, s)
+	}
+	for &sc in w.scenes do for &o in sc.objects do if o.walks {
+		o.actor.character = &lucy_evening_art if o.char_name == "lucy_evening" else &lucy_day_art
+	}
+	seen_people = {{name = "Ada"}, {name = "Lucy"}}
+	for &s, i in seen_people do seen_speakers[i] = &s
+	w.speakers = seen_speakers[:]
+	w.player = {pos = {500, 150}, speed = 120, character = &ada_art}
+	w.current = 2
+	refresh_world(&w)
+	w.time = 1
+	return w
+}
+
+@(private = "file")
+seen_tidy :: proc(w: ^World) {
+	destroy_world(w)
+	delete(ada_art.parts)
+	delete(lucy_day_art.parts)
+	delete(lucy_evening_art.parts)
+	ada_art, lucy_day_art, lucy_evening_art = {}, {}, {}
+}
+
+// Lucy says a line to her face in the room with no line of hers: what is she
+// called in wearing, and at what pace? Then she is sent off again.
+@(private = "file")
+called_in_as :: proc(t: ^testing.T, w: ^World) -> (art: ^Character_Art, speed: f32) {
+	c: Conversation
+	lines := make([]Talk_Line, 1, context.temp_allocator)
+	lines[0] = {who = seen_speakers[1], text = "Lovely evening."}
+	begin_conversation(w, &c, lines)
+	if !testing.expect_value(t, len(w.sight.called), 1) do return nil, 0
+	art, speed = w.sight.called[0].actor.character, w.sight.called[0].actor.speed
+	for talking(w) do advance_conversation(w)
+	sight_clear(w)
+	return
+}
+
+@(test)
+a_call_in_wears_what_she_last_saw_them_in :: proc(t: ^testing.T) {
+	w := seen_world(t)
+	defer seen_tidy(&w)
+
+	// Never seen: the first line in the room order, as it always was.
+	art, _ := called_in_as(t, &w)
+	testing.expect(t, art == &lucy_day_art, "never seen: the first line's art")
+
+	// Seen in the evening room, in the evening costume: called in so, at its pace.
+	set_flag(&w, "evening")
+	go_to(&w, 1, {500, 150})
+	go_to(&w, 2, {500, 150})
+	speed: f32
+	art, speed = called_in_as(t, &w)
+	testing.expect(t, art == &lucy_evening_art, "as last seen: the evening costume")
+	testing.expect_value(t, speed, f32(90))
+
+	// A room she is in but not drawn in (her line's when= is off) records nothing.
+	go_to(&w, 0, {500, 150})
+	go_to(&w, 2, {500, 150})
+	art, _ = called_in_as(t, &w)
+	testing.expect(t, art == &lucy_evening_art, "not drawn in the day room tonight: unchanged")
+
+	// Seen by day again: the day costume.
+	set_flag(&w, "evening", false)
+	go_to(&w, 0, {500, 150})
+	go_to(&w, 2, {500, 150})
+	art, _ = called_in_as(t, &w)
+	testing.expect(t, art == &lucy_day_art, "seen by day since: the day costume")
+
+	// Into a save and out again, whatever the record became in between.
+	set_flag(&w, "evening")
+	go_to(&w, 1, {500, 150})
+	go_to(&w, 2, {500, 150})
+	s: Save
+	defer save_destroy(&s)
+	save_world(&w, &s, "")
+	testing.expect_value(t, save_text(&s, "seen_as.0"), "Lucy\tlucy_evening\t90")
+	text := strings.clone(save_text_of(&s))
+	defer delete(text)
+	w.sight.seen_as[seen_speakers[1]] = {&lucy_day_art, 120}
+	testing.expect(t, load_world(&w, text))
+	art, speed = called_in_as(t, &w)
+	testing.expect(t, art == &lucy_evening_art, "restored: what she had seen when she saved")
+	testing.expect_value(t, speed, f32(90))
+
+	// Saved in a room that draws her by day but not tonight: the restore's
+	// half-restored rooms must not overwrite what was saved.
+	set_flag(&w, "evening")
+	go_to(&w, 1, {500, 150})
+	go_to(&w, 0, {500, 150})
+	s2: Save
+	defer save_destroy(&s2)
+	save_world(&w, &s2, "")
+	text2 := strings.clone(save_text_of(&s2))
+	defer delete(text2)
+	set_flag(&w, "evening", false)
+	testing.expect(t, load_world(&w, text2))
+	go_to(&w, 2, {500, 150})
+	art, _ = called_in_as(t, &w)
+	testing.expect(t, art == &lucy_evening_art, "restored in a room that drew her otherwise before the load")
+
+	// Saved with a record that no line beginning on the way back gives: her
+	// evening line began, then her porch line in the day dress. Restored, the
+	// lines begin again in flag order (a_porch, then evening), and only the
+	// saved record says the day dress.
+	go_to(&w, 2, {500, 150})
+	set_flag(&w, "evening")
+	set_flag(&w, "a_porch")
+	s3: Save
+	defer save_destroy(&s3)
+	save_world(&w, &s3, "")
+	text3 := strings.clone(save_text_of(&s3))
+	defer delete(text3)
+	set_flag(&w, "a_porch", false)
+	set_flag(&w, "evening", false)
+	testing.expect(t, load_world(&w, text3))
+	art, _ = called_in_as(t, &w)
+	testing.expect(t, art == &lucy_day_art, "restored: the saved record, not the lines begun on the way back")
+	set_flag(&w, "a_porch", false)
+
+	// A line that begins to hold, in a room she is not in, is what she wears
+	// from then: the evening comes while she is elsewhere, and goes again.
+	set_flag(&w, "evening", false)
+	go_to(&w, 0, {500, 150})
+	go_to(&w, 2, {500, 150})
+	set_flag(&w, "evening")
+	art, _ = called_in_as(t, &w)
+	testing.expect(t, art == &lucy_evening_art, "her evening line began, unseen: the evening costume")
+	set_flag(&w, "evening", false)
+	art, _ = called_in_as(t, &w)
+	testing.expect(t, art == &lucy_day_art, "her day line began again, unseen: the day costume")
+
+	// A save from before anybody was seen restores no record.
+	clear(&w.sight.seen_as)
+	empty: Save
+	defer save_destroy(&empty)
+	save_world(&w, &empty, "")
+	testing.expect(t, !save_has(&empty, "seen_as.0"))
+	w.sight.seen_as[seen_speakers[1]] = {&lucy_evening_art, 90}
+	testing.expect(t, load_world(&w, save_text_of(&empty)))
+	art, _ = called_in_as(t, &w)
+	testing.expect(t, art == &lucy_day_art, "an empty record restored: the first line again")
+
+	// A new game forgets what the last one's people wore.
+	w.sight.seen_as[seen_speakers[1]] = {&lucy_evening_art, 90}
+	reset_story(&w)
+	testing.expect_value(t, len(w.sight.seen_as), 0)
+}
+
+
+// Review 2: the same save restored twice, once over a world
+// where a routine had walked her porch line off (away), gives two call-ins.
+@(test)
+a_call_in_restore_depends_on_the_world_replaced :: proc(t: ^testing.T) {
+	w := seen_world(t)
+	defer seen_tidy(&w)
+	set_flag(&w, "a_porch")
+	set_flag(&w, "evening") // began last: the evening costume
+	s: Save
+	defer save_destroy(&s)
+	save_world(&w, &s, "")
+	testing.expect_value(t, save_text(&s, "seen_as.0"), "Lucy\tlucy_evening\t90")
+	text := strings.clone(save_text_of(&s))
+	defer delete(text)
+
+	// Restored over the same world: the saved record.
+	testing.expect(t, load_world(&w, text))
+	art, _ := called_in_as(t, &w)
+	testing.expect(t, art == &lucy_evening_art, "restored over a still world: evening")
+
+	// A routine walks her porch line off (routine.odin .Leave), then the same save is restored.
+	for &o in w.scenes[3].objects do if o.walks {o.away = true; o.hidden = true}
+	testing.expect(t, load_world(&w, text))
+	art, _ = called_in_as(t, &w)
+	testing.expect(t, art == &lucy_evening_art, "restored over a world where she had walked off: still evening")
+}
+
+// Review 2: a peep's tick (peep.odin play_window ticks after
+// peeping.active is set) turns the evening on; her evening line begins then.
+@(test)
+a_call_in_a_line_begun_during_a_peep :: proc(t: ^testing.T) {
+	w := seen_world(t)
+	defer seen_tidy(&w)
+	w.peeping.active = true // play_window: active, then tick(w, win.cost)
+	set_flag(&w, "evening")  // what the tick's on_clock does at the hour
+	w.peeping.active = false // end_window
+	art, _ := called_in_as(t, &w)
+	testing.expect(t, art == &lucy_evening_art, "her evening line began during a peep: the evening costume")
+}
+
+// Review 2: her room last. She stands in the evening room
+// looking at Lucy in the evening costume when the porch line (day dress, a
+// room later in the order) begins: what she sees wins.
+@(test)
+a_call_in_her_room_noted_last :: proc(t: ^testing.T) {
+	w := seen_world(t)
+	defer seen_tidy(&w)
+	set_flag(&w, "evening")
+	go_to(&w, 1, {500, 150})
+	set_flag(&w, "a_porch")
+	go_to(&w, 2, {500, 150}) // leaving notes nothing: go_to moves w.current first
+	art, _ := called_in_as(t, &w)
+	testing.expect(t, art == &lucy_evening_art, "seen in the evening costume as the porch line began: evening")
+}

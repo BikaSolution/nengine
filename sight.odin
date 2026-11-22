@@ -1,6 +1,8 @@
 package nengine
 
 import "core:fmt"
+import "core:slice"
+import "core:strconv"
 import "core:strings"
 import rl "vendor:raylib"
 
@@ -28,6 +30,13 @@ import rl "vendor:raylib"
 //   (call_into_sight). A voice that is not to her face (through a net, from
 //   somewhere in the dark, at the top of a ladder) is the game's to say:
 //   World.sight.voice_off.
+// - Somebody called into sight wears what they wear now, as near as the
+//   engine knows it: a person with a line in several rooms in several
+//   costumes (char=), a day dress and an evening one, is called in in the
+//   one drawn last in the room she was in, or in the one on their line that
+//   began to hold most recently, in any room, whichever came later (seen_as,
+//   sight_note_drawn, sight_note_line); not in their first line's in the
+//   room order whatever the hour. Neither yet: that first line, as before.
 //
 // And the check: `!autoplay <script>` (autoplay.odin) plays a script in real
 // frames in the harness and lists every ghost — a person spoken to, or saying
@@ -58,6 +67,16 @@ Sight :: struct {
 	// The screen hers again since this world time (freed), for SIGHT_LINGER.
 	free_since: f32,
 	freed:      bool,
+	// What each speaker was last drawn in, in the room she was in, or wears
+	// on their line that last began to hold, in any room: what a call-in of
+	// theirs wears (speaker_art). Saved (sight_save).
+	seen_as:    map[^Speaker]Seen_As,
+}
+
+// A person's picture as she last saw it: their line's art and pace.
+Seen_As :: struct {
+	art:   ^Character_Art,
+	speed: f32,
 }
 
 // How long the screen is hers before the people who came to speak go: a
@@ -237,14 +256,79 @@ call_into_sight :: proc(w: ^World, line: Talk_Line) {
 	face_towards(&w.player, at - w.player.pos)
 }
 
-// The character art a speaker is drawn with: any person's line, in any room,
-// that is theirs.
+// The character art a speaker is drawn with: what she last saw them in
+// (seen_as); never seen, any person's line, in any room, that is theirs, the
+// first in the room order.
 @(private = "file")
 speaker_art :: proc(w: ^World, s: ^Speaker) -> (art: ^Character_Art, speed: f32) {
+	if seen, ok := w.sight.seen_as[s]; ok && seen.art != nil do return seen.art, seen.speed
 	for &sc in w.scenes do for &o in sc.objects {
 		if o.walks && o.actor.character != nil && speaks_as(w, &o, s) do return o.actor.character, o.actor.speed
 	}
 	return nil, 0
+}
+
+// The room she is in, refreshed (refresh_scene, and last in refresh_world):
+// whoever is drawn in it is remembered in what they wear, for a call-in
+// somewhere else later.
+@(private)
+sight_note_drawn :: proc(w: ^World, sc: ^Scene) {
+	for &o in sc.objects do sight_note_line(w, &o)
+}
+
+// One person's line, shown: drawn in her room, or just begun to hold in any
+// room (refresh_scene), which is when a change of costume happens wherever
+// she is. Under the speaker its name names and the one its char= names. Noted
+// during a peep too; not while a peep wears the far room another way for a
+// frame (draw_far_room).
+@(private)
+sight_note_line :: proc(w: ^World, o: ^Object) {
+	if w.peeping.dressing || !o.walks || o.hidden || o.actor.character == nil do return
+	seen := Seen_As{o.actor.character, o.actor.speed}
+	if s := speaker_named(w, o.name); s != nil do w.sight.seen_as[s] = seen
+	if o.char_name == "" do return
+	if s := speaker_named(w, o.char_name); s != nil do w.sight.seen_as[s] = seen
+}
+
+// Into a save: `seen_as.N speaker<TAB>art<TAB>speed`, by speaker, so the same
+// world writes the same text.
+@(private)
+sight_save :: proc(w: ^World, s: ^Save) {
+	rows := make([dynamic]string, context.temp_allocator)
+	for who, seen in w.sight.seen_as {
+		if who == nil || seen.art == nil || seen.art.name == "" do continue
+		append(&rows, fmt.tprintf("%v\t%v\t%v", who.name, seen.art.name, seen.speed))
+	}
+	slice.sort(rows[:])
+	for r, i in rows do save_put(s, fmt.tprintf("seen_as.%v", i), r)
+}
+
+// Out of a save: the record as it was, each art found by its name on any
+// person's line. A row naming a speaker or an art this world no longer has is
+// dropped; that speaker's call-ins go back to the first line in room order.
+@(private)
+sight_load :: proc(w: ^World, s: ^Save) {
+	clear(&w.sight.seen_as)
+	for i := 0; ; i += 1 {
+		row := save_text(s, fmt.tprintf("seen_as.%v", i))
+		if row == "" do break
+		f := strings.split(row, "\t", context.temp_allocator)
+		if len(f) != 3 do continue
+		who: ^Speaker
+		for sp in w.speakers do if sp.name == f[0] do who = sp
+		art := art_on_a_line(w, f[1])
+		speed, ok := strconv.parse_f32(f[2])
+		if who == nil || art == nil || !ok do continue
+		w.sight.seen_as[who] = {art, speed}
+	}
+}
+
+@(private = "file")
+art_on_a_line :: proc(w: ^World, name: string) -> ^Character_Art {
+	for &sc in w.scenes do for &o in sc.objects {
+		if o.walks && o.actor.character != nil && o.actor.character.name == name do return o.actor.character
+	}
+	return nil
 }
 
 // How far apart, along the floor, she and the people called to her stand.

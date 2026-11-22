@@ -377,6 +377,7 @@ reset_story :: proc(w: ^World) {
 	clear_accusations(w)
 	w.clock_ticks = 0
 	w.ride = {}
+	clear(&w.sight.seen_as) // what the last game's people wore (sight.odin)
 	passer_cancel(w)
 	clear(&w.timers)
 	w.pending = ""
