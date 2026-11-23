@@ -209,6 +209,9 @@ peep :: proc(w: ^World, o: ^Object) -> Peep_Outcome {
 play_window :: proc(w: ^World, o: ^Object, index: int) {
 	win := &w.peep_windows[index]
 	set_flag(w, peep_heard_flag(win)) // one hearing, ever, however it ends
+	// A reach record (peep_reach.odin) takes a window that plays as reached, at the
+	// minute it played: a beat may play one inside a step that lands after its hours.
+	if index < len(w.reach) && w.reach[index].reached < 0 do w.reach[index].reached = clock_minute(w)
 	blind := peep_blind(w, o, win)
 
 	// Who catches her, and at which line: whichever comes first, of somebody

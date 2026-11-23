@@ -44,6 +44,10 @@ import "core:strings"
 //     !ride                 who is being ridden and what it is looking at, and
 //                           where the body was left
 //     !ride <host>          go under and stay in the handover, for a --shot
+//     !reach HH:MM [at=<room>] [stop=<condition>]  step the clock turn by turn as play does,
+//                           waiting at <room>, and record which peep windows
+//                           a landing opened; `!reach` reports them (reached,
+//                           STEPPED OVER), `!reach clear` (peep_reach.odin)
 //     !leave <n>            the next conversation the harness reads, it leaves
 //                           (Escape) on its nth line: a peep left part-way
 //     !typing <words>       leave words in the typing line, unsent: a --shot
@@ -266,7 +270,7 @@ script_line :: proc(w: ^World, said: string, on_bang: Bang) {
 // a conversation: a scripted ride) goes round once, as its frames would take
 // it, and she comes back: in play it ends itself, and a harness that left her
 // in it would answer every later line as a passenger.
-@(private = "file")
+@(private)
 run_on :: proc(w: ^World) {
 	ours := riding(w) // under already: the command's own ride
 	// A line `!hold` left up stays up: nothing runs on past it.
@@ -558,6 +562,11 @@ bang :: proc(w: ^World, line: string, on_bang: Bang) -> string {
 			fmt.sbprintf(&b, "\n    %v at %v, %v%v", win.name, win.peep, when_, fmt.tprintf(" (%v)", state) if state != "" else "")
 		}
 		return strings.to_string(b)
+
+	case "reach":
+		// !reach 23:59 at=row, !reach, !reach clear: can play reach every
+		// peep window, ticking as play does? See peep_reach.odin.
+		return reach_bang(w, arg)
 
 	case "ticks":
 		// !ticks 06:40 — step the clock a tick at a time to that hour and say

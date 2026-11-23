@@ -1457,13 +1457,42 @@ underneath), a tick is a **turn**: the clock runs on minute by minute to the
 next moment the world is different — a drawn thing or person appears, goes
 or moves; a room reads, sounds or is lit otherwise; a flag changes; a beat or
 an announcement falls due — and stops there, `clock_turn_max` minutes at most.
-Every tick the player pays for changes somebody, and no window is stepped
-over. `clock_at_least` still jumps by minutes: a story's cut is not so many
-turns.
+Every tick the player pays for changes somebody, and no flag's window is
+stepped over. **A peep window's hours are not a change** (they set no flag and
+move nobody): a window whose minutes nothing else in the world marks is
+stepped over by every turn, and no player can hear it. `clock_at_least` still
+jumps by minutes: a story's cut is not so many turns.
 
 With `notes_tick`, every new notebook entry spends a tick, but no command
 spends more than one that way (`World.ticked`, reset by `run_command`): three
 lines about one find are one find. `discover` is `note` that always costs.
+
+`!reach HH:MM [at=<room>]` steps the clock the same way, as play does (each
+tick and all it sets off: beats, cuts, rides and the jumps they make), walking
+her back to `at` after every step as a player waiting at an aperture would, and
+records every landing against `World.peep_windows` (`peep_reach.odin`).
+`!reach` alone reports each window with hours: **reached** at a minute (a
+landing in its hours, in a room with its aperture, its `only` true), **STEPPED
+OVER** (one step went from before its `from` to its `until` or later while its
+`only` held, with her at it), or not judged on that route (its condition shut,
+she was elsewhere, or the route ended first). A window that plays during a
+step (a beat may play one) is reached at the minute it played, even when the
+step lands after its hours. `stop=<condition>` ends the route at the first
+landing where the condition holds (a game's word for "the game is over"), and
+that landing does not count. `!reach clear` starts again.
+
+**What it does not see.** It proves a turn stops in each window for a player
+who waits at the aperture from the route's start; not every route a player can
+take. Stops that depend on what she has done (an `only` on a flag of hers, a
+verb that ticked earlier, the half-hour cap counted from another room's beat)
+give other landings. The walk back to `at` is a jump (`go_to_named`): a door or
+a keep-out on the way is not tested. Rides, SLEEP and forced moves (a scene
+that carries her off) take her from the aperture by choice or by the story,
+which is not a window stepped over. It covers peep windows only: a hint row or
+a ride's glance with hours is not checked. And it does not check that the
+minute it reaches is coherent with the rest of the camp.
+`!at` can't prove a window can be reached, because a jump stands on any minute;
+`!reach` never jumps. A game runs it once per aperture room and branch.
 
 `!ticks HH:MM` in the harness steps the clock turn by turn to that hour and
 prints what each turn changed — or `NOTHING CHANGED` and why it stopped (a
@@ -2205,6 +2234,7 @@ A line starting `!` is the harness talking to the game. The engine's:
 | `!tick [n]` | spend n ticks of the story clock |
 | `!clock` | what hour it is |
 | `!at HH:MM` | spend ticks until then — the first tick at or after it, the next time the clock reads that |
+| `!reach HH:MM [at=<room>]`, `!reach`, `!reach clear` | tick turn by turn as play does (never a jump), waiting at a room, and report which peep windows a landing opened and which were stepped over (The story clock, Turns) |
 | `!flag <name>` / `!flag !name` | a flag on, or off |
 | `!dress <group> <which>` | put a room in one of its dressings |
 | `!note <tab> <id> [@minute] <text>` | write an entry, stamped now or at a minute on the game's clock |

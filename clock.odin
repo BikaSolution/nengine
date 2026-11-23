@@ -133,7 +133,9 @@ tick :: proc(w: ^World, n := 1) {
 // reads or sounds or is lit otherwise, a story window has opened or shut
 // (a flag), something is due to be seen (a beat, an announcement) — and
 // stops there. So every tick the player pays for changes somebody, and no
-// window is ever stepped over. `clock_turn_max` minutes is as far as one turn
+// flag's window is ever stepped over. A peep window's hours are not a change:
+// one whose minutes nothing else marks is stepped over (`!reach`,
+// peep_reach.odin, finds them). `clock_turn_max` minutes is as far as one turn
 // goes; a turn that gets there without a change is one the game has not
 // filled yet, and `!ticks` says so.
 @(private)

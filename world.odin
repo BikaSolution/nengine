@@ -107,6 +107,9 @@ World :: struct {
 	// for a --shot of it. `script_held` is that line, still up. See script.odin.
 	script_hold:     string,
 	script_held:     bool,
+	// `!reach`: which peep windows play has landed in, and which it stepped
+	// over. One per window. See peep_reach.odin.
+	reach:           [dynamic]Reach_Mark,
 
 	// Dialogue nodes, read from the writers' files, played by id. See nodes.odin.
 	nodes:           map[string]Node,
@@ -340,6 +343,7 @@ destroy_world :: proc(w: ^World) {
 	clear_restore_points(w)
 	delete(w.peep_lines)
 	delete(w.script_hold)
+	delete(w.reach)
 	nodes_destroy(w)
 	delete(w.node_lines)
 	clear_flags(w)
