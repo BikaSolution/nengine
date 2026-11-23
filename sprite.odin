@@ -21,6 +21,7 @@ Sprite :: struct {
 	frame_w: i32,          // one frame on the canvas: round(w * scale)
 	frame_h: i32,
 	frames:  i32,
+	fps:     f32,   // frames a second when the picture animates by itself (the file's `fps N`); 0 for a still. See shot_frame
 	holds:   []i32, // ticks per frame from the file's `frame N hold=K`; nil when every frame shows for one
 	w, h:    i32,   // one frame as painted, in art pixels. 0: the same as frame_w and frame_h
 	scale:   f32,   // canvas pixels per art pixel. 0 is 1
@@ -389,4 +390,21 @@ sprite_up_shader :: proc() -> rl.Shader {
 sprite_draw_shutdown :: proc() {
 	if up_shader.id != 0 do rl.UnloadShader(up_shader)
 	up_shader = {}
+}
+
+// The frame of a painted picture shown on its own (a close-up, a shot, a peep
+// half, an announcement's picture) at world time `t`. A picture whose file says
+// `fps` and has more than one frame plays them, looping, with the frames'
+// holds, as a scene object does; any other shows `pinned`, the frame the
+// caller picked (a two-shot picks one per speaker); with `fps` the caller's
+// frame is not used. The clock is the world's, not the shot's own: no start
+// time is kept, a picture up over several lines does not start again on each,
+// two pictures up together (a peep's halves) share it, and it stands still
+// under an overlay as the room does. So a shot may open on any frame of its
+// loop, and it is not in step with the room's objects, which each run on a
+// phase of their own (scene.odin).
+shot_frame :: proc(s: Sprite, pinned: i32, t: f32) -> i32 {
+	if s.fps <= 0 || s.frames <= 1 do return pinned
+	f, _ := anim_frame(t, s.fps, s.frames, s.holds)
+	return f
 }

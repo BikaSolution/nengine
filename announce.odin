@@ -142,7 +142,7 @@ draw_announcement :: proc(w: ^World) {
 		pw := f32(WIDTH) * 0.625
 		ph := pw * f32(a.shot.frame_h) / f32(a.shot.frame_w)
 		x := (f32(WIDTH) - pw) / 2
-		frame := a.frame % max(a.shot.frames, 1)
+		frame := shot_frame(a.shot^, a.frame, w.time) % max(a.shot.frames, 1)
 		edge := uf(f32(max(style.border, 1)))
 		rl.DrawRectangleRec({x - edge * 2, y - edge * 2, pw + edge * 4, ph + edge * 4}, style.edge)
 		draw_sprite_pro(a.shot^, frame, {x, y, pw, ph})
@@ -190,7 +190,7 @@ draw_comic_announcement :: proc(w: ^World, a: ^Announcement) {
 		ph := math.round(pw * f32(a.shot.frame_h) / f32(a.shot.frame_w))
 		x := math.round((gw - pw) / 2)
 		draw_picture_frame(x, y, pw, ph)
-		draw_sprite_pro(a.shot^, a.frame % max(a.shot.frames, 1), {gx(x), gx(y), gx(x + pw) - gx(x), gx(y + ph) - gx(y)})
+		draw_sprite_pro(a.shot^, shot_frame(a.shot^, a.frame, w.time) % max(a.shot.frames, 1), {gx(x), gx(y), gx(x + pw) - gx(x), gx(y + ph) - gx(y)})
 		y += ph + 12
 	}
 	cap := plan_caption(a.text, m, 8, y, gw - 16, gw - 16, a.title)

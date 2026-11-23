@@ -257,6 +257,10 @@ Sprite_Data :: struct {
 	name:    string,
 	w, h:    i32,
 	frames:  i32,
+	// Frames a second, from an optional `fps N` header line: a picture shown as
+	// a close-up, shot or announcement plays its frames by itself at this rate
+	// (see shot_frame). 0, the default, is a still.
+	fps:     f32,
 	mode:    Palette_Mode, // which colours this picture is allowed. See palette.odin
 	ramps:   [dynamic]Ramp, // materials: the tones a surface goes through. Authoring
 	                        // data — the game never reads it. See palette.odin
@@ -476,6 +480,11 @@ parse_sprite_data :: proc(text: string) -> (d: Sprite_Data, ok: bool) {
 				n, _ := strconv.parse_int(l.words[0])
 				d.frames = i32(max(n, 1))
 			}
+		case "fps":
+			if len(l.words) > 0 {
+				n, _ := strconv.parse_f32(l.words[0])
+				d.fps = max(n, 0)
+			}
 		case "mode":
 			// A file that doesn't say is VGA, which is what every file written
 			// before there were modes is: unconstrained, and still correct.
@@ -507,6 +516,7 @@ save_sprite_data :: proc(d: ^Sprite_Data, path: string) -> bool {
 sprite_data_text :: proc(d: ^Sprite_Data, allocator := context.temp_allocator) -> string {
 	b := strings.builder_make(allocator)
 	fmt.sbprintf(&b, "# nengine sprite\nsprite %v\nsize %v %v\nframes %v\n", d.name, d.w, d.h, d.frames)
+	if d.fps > 0 do fmt.sbprintf(&b, "fps %v\n", d.fps)
 	fmt.sbprintf(&b, "mode %v\n", palette_mode_name(d.mode))
 	write_ramps(&b, d.ramps[:])
 	for p in d.palette {
@@ -550,6 +560,7 @@ sprite_data_to_sprite :: proc(d: ^Sprite_Data, scale: f32 = 1) -> Sprite {
 		frame_w = sprite_up(d.w, s),
 		frame_h = sprite_up(d.h, s),
 		frames  = d.frames,
+		fps     = d.fps,
 		holds   = holds,
 		w       = d.w,
 		h       = d.h,

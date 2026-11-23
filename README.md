@@ -1169,6 +1169,23 @@ plays them with their holds: a bush that sways in a gust and then stands
 still. Each object runs on its own phase (from where it stands), so two
 bushes in one room do not move in step.
 
+**A painted shot that moves.** A `.sprite` may carry an `fps N` header line
+(after `frames`). A picture shown on its own (a conversation line's close-up,
+a cutscene's `shot`, both halves of a peep, an announcement's picture) then
+plays its frames in a loop, with their holds, on the world's clock
+(`shot_frame` in `sprite.odin`): water, a flame or smoke in a close-up needs
+no code. A picture with no `fps`, or with one frame, keeps the frame the
+caller picked (a two-shot picks one per speaker, so those still work); with
+`fps` the caller's frame is not used. The clock is the world's, not the
+shot's own: nothing keeps a start time, a picture that stays up over several
+lines does not start again on each, the two halves of a peep share it, and
+the picture stands still under an overlay as the room does. So a shot may
+open on any frame of its loop (paint a loop whose last frame leads into its
+first), and it is not in step with the room's objects, which each run on
+their own phase. An object in a room still plays at its scene line's `fps=`;
+the picture's own `fps` is only for when it is shown alone. `nart` reads and
+writes the line.
+
 A frame with no `hold` shows for one tick, so every file written before holds
 existed plays exactly as it did. Holds work on every part, the standing and
 walking ones too. The character editor shows "frame N holds for" under the
@@ -2771,6 +2788,7 @@ the phrases people type: `{.Noun, "chest", "vet chest, drugs, vials"}`.
 sprite lamp
 size 12 20
 frames 1
+# fps 3     (optional: plays the frames of a close-up or shot by itself)
 mode bega
 ramp brass 000000 AA5500 FFFF55
 pal . 0,0,0,0

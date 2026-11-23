@@ -200,7 +200,7 @@ draw_canvas :: proc(w: ^World) {
 	// not the room, and not tinted like it.
 	if shot, frame, ok := conversation_shot(w); ok {
 		rl.ClearBackground(rl.BLACK)
-		draw_sprite(shot^, frame, {f32(WIDTH) / 2, f32(shot.frame_h)})
+		draw_sprite(shot^, shot_frame(shot^, frame, w.time), {f32(WIDTH) / 2, f32(shot.frame_h)})
 		draw_world_top(w)
 		if w.overlay.draw != nil do w.overlay.draw(w)
 		return
@@ -209,7 +209,7 @@ draw_canvas :: proc(w: ^World) {
 	if cutting(w) {
 		if shot, frame, ok := cut_shot_sprite(&w.cut, w); ok {
 			rl.ClearBackground(rl.BLACK)
-			draw_sprite(shot, frame, {f32(WIDTH) / 2, f32(shot.frame_h)})
+			draw_sprite(shot, shot_frame(shot, frame, w.time), {f32(WIDTH) / 2, f32(shot.frame_h)})
 			draw_world_top(w)
 			if w.overlay.draw != nil do w.overlay.draw(w)
 			return

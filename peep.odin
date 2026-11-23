@@ -381,7 +381,7 @@ draw_peep :: proc(w: ^World) -> bool {
 
 	// Her side.
 	if v.near.texture.id != 0 {
-		draw_sprite(v.near, 0, {half / 2, band})
+		draw_sprite(v.near, shot_frame(v.near, 0, w.time), {half / 2, band})
 	} else {
 		rl.DrawRectangle(0, 0, i32(half), i32(band), BEGA[PEEP_BAND])
 	}
@@ -390,7 +390,7 @@ draw_peep :: proc(w: ^World) -> bool {
 	// of it, through the frame.
 	switch {
 	case v.far_shot.texture.id != 0:
-		draw_sprite(v.far_shot, 0, {half + half / 2, band})
+		draw_sprite(v.far_shot, shot_frame(v.far_shot, 0, w.time), {half + half / 2, band})
 	case v.far_room >= 0:
 		draw_far_room(w, v, half, band)
 	case:
