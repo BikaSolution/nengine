@@ -2031,6 +2031,18 @@ w.hosts = HOSTS[:] // ne.Host{name = "stoat", from = 20*60, until = 28*60, camer
   never walks on or off. A flag the game sets when RIDE starts is not the same
   thing: the handover draws her own room with it already on, and a host
   looking into the room her body is in would flash the figure in and out.
+- **At one glance only:** `glance=hands,dress` beside `seen=host` draws it only
+  while the host looks at one of those glances (a `Glance`'s `look`; going under,
+  the first glance that holds, which `ride` stores; coming back, the last). The
+  words of a ride are said glance by glance, so a figure the words give in one
+  glance is not there in the next: hands at a box, and then "Gone". `when=` still
+  rules its hours. A name matches a glance's `look` in whichever host looks at
+  the room, and names repeat across hosts, so keep a room's names apart.
+  `host_glance_faults(w)` (world_check.odin) makes faults of a name no glance
+  into that room has and of `glance=` without `seen=host`; a game calls it with
+  `world_faults`. In the harness, `!ride` lists the `seen=host` things in the
+  view's drawing list at the glance it is on (`host sees a, b`): `room_items`
+  round `host_view_begin`/`host_view_end`, the same list `draw_host_view` draws.
 
 `ne.first_time(w, "refused_a_name")` is for the refusals: true once, then false
 for good, and it is a flag, so it saves.

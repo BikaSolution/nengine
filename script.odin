@@ -747,7 +747,22 @@ bang :: proc(w: ^World, line: string, on_bang: Bang) -> string {
 		if arg != "" do return fmt.tprintf("%v", ride(w, arg))
 		body := "no body left anywhere"
 		if room, pos, ok := ride_body(w); ok do body = fmt.tprintf("body in %v at %.0f,%.0f", room, pos.x, pos.y)
-		if g := ride_glance(w); g != nil do return fmt.tprintf("riding the %v, looking at %v; %v", ride_host(w).name, g.look, body)
+		if g := ride_glance(w); g != nil {
+			// and what only a host sees in the view now: the `seen=host` things
+			// in the drawing list the view is drawn from (room_items, round
+			// host_view_begin and host_view_end, as draw_host_view does)
+			seen := strings.builder_make(context.temp_allocator)
+			sc := &w.scenes[w.ride.cam_room]
+			host_view_begin(w, ride_host(w))
+			items, _ := room_items(w, sc, w.ride.cam_room == w.ride.body_room)
+			host_view_end()
+			for it in items {
+				if it.obj < 0 || it.obj >= len(sc.objects) || !sc.objects[it.obj].host_only do continue
+				strings.write_string(&seen, ", " if strings.builder_len(seen) > 0 else "; host sees ")
+				strings.write_string(&seen, sc.objects[it.obj].name)
+			}
+			return fmt.tprintf("riding the %v, looking at %v; %v%v", ride_host(w).name, g.look, body, strings.to_string(seen))
+		}
 		if riding(w) do return fmt.tprintf("between, with the %v; %v", ride_host(w).name, body)
 		return fmt.tprintf("not riding; %v", body)
 	}

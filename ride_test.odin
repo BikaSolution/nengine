@@ -165,6 +165,109 @@ anything_else_while_riding_is_the_games :: proc(t: ^testing.T) {
 }
 
 @(test)
+a_thing_only_a_host_sees_at_one_glance :: proc(t: ^testing.T) {
+	w := cat_house()
+	defer done(&w)
+	append(&w.scenes[0].objects, Object{name = "mouse", only = "late", host_only = true, host_looks = "moth, beam"})
+	m := &w.scenes[0].objects[len(w.scenes[0].objects) - 1]
+	set_flag(&w, "late", true)
+	refresh_world(&w)
+	testing.expect(t, m.host_sees)
+	testing.expect(t, object_drawn(m, true, "moth"))  // one of its glances
+	testing.expect(t, object_drawn(m, true, "beam"))  // spaces in the list are nothing
+	testing.expect(t, !object_drawn(m, true, "door")) // another glance
+	testing.expect(t, !object_drawn(m, true))         // no glance named
+	testing.expect(t, !object_drawn(m, false, "moth")) // her own eyes, whatever the glance
+	set_flag(&w, "late", false)
+	refresh_world(&w)
+	testing.expect(t, !object_drawn(m, true, "moth")) // its hour still rules
+
+	// Going under, the view already shows the first glance; riding, the
+	// current one; coming back, the last.
+	set_flag(&w, "late", true)
+	refresh_world(&w)
+	testing.expect_value(t, ride(&w, "cat"), Ride_Outcome.Started)
+	h := ride_host(&w)
+	testing.expect_value(t, host_view_look(&w, h), h.attention[0].look)
+	update_ride(&w, GOING_SECS)
+	testing.expect_value(t, w.ride.phase, Ride_Phase.Riding)
+	testing.expect_value(t, host_view_look(&w, h), h.attention[w.ride.glance].look)
+}
+
+// A host whose first glance is not there at first: going under must
+// show the second, by name.
+@(private = "file")
+SKIPS := [?]Glance {
+	{look = "door", only = "door_open", secs = 3},
+	{look = "shelf", secs = 3},
+	{look = "stair", secs = 3},
+}
+
+@(private = "file")
+SKIP_HOSTS := [?]Host{{name = "cat", attention = SKIPS[:]}}
+
+@(test)
+glances_by_name_through_a_ride :: proc(t: ^testing.T) {
+	w := cat_house()
+	defer done(&w)
+	w.hosts = SKIP_HOSTS[:]
+	append(&w.scenes[0].objects, Object{name = "jar", host_only = true, host_looks = "stair"})
+	append(&w.scenes[0].objects, Object{name = "dust", host_only = true, host_looks = "shelf"})
+	refresh_world(&w)
+	h := &w.hosts[0]
+	look :: proc(w: ^World, h: ^Host) -> string {return host_view_look(w, h)}
+
+	testing.expect_value(t, ride(&w, "cat"), Ride_Outcome.Started)
+	testing.expect_value(t, w.ride.phase, Ride_Phase.Going)
+	testing.expect_value(t, look(&w, h), "shelf") // "door" is not there: the view shows the second
+	testing.expect(t, sees(&w, "dust") && !sees(&w, "jar"))
+	update_ride(&w, GOING_SECS)
+	testing.expect_value(t, w.ride.phase, Ride_Phase.Riding)
+	testing.expect_value(t, look(&w, h), "shelf")
+	run_command(&w, "wait")
+	testing.expect_value(t, look(&w, h), "stair")
+	testing.expect(t, sees(&w, "jar") && !sees(&w, "dust"))
+	// The harness's `!ride` reads the same list, and shuts the view behind it.
+	said := bang(&w, "ride", nil)
+	testing.expectf(t, strings.contains(said, "looking at stair; ") && strings.has_suffix(said, "; host sees jar"), "%v", said)
+	testing.expect(t, !drawing_host_view && drawing_look == "")
+	come_back(&w)
+	testing.expect_value(t, w.ride.phase, Ride_Phase.Coming)
+	testing.expect_value(t, look(&w, h), "stair") // coming back, the last glance fades
+	testing.expect(t, sees(&w, "jar"))
+}
+
+// What the host's view draws, read as `!ride` reads it: the room's drawing
+// list round host_view_begin and host_view_end.
+@(private = "file")
+sees :: proc(w: ^World, name: string) -> bool {
+	sc := &w.scenes[w.ride.cam_room]
+	host_view_begin(w, ride_host(w))
+	items, _ := room_items(w, sc, false)
+	host_view_end()
+	for it in items do if it.obj >= 0 && sc.objects[it.obj].name == name do return true
+	return false
+}
+
+@(test)
+a_glance_list_matches_whole_names_and_survives_the_file :: proc(t: ^testing.T) {
+	m := Object{host_only = true, host_sees = true, host_looks = "moth, beam"}
+	testing.expect(t, object_drawn(&m, true, "moth"))
+	testing.expect(t, !object_drawn(&m, true, "mot"))   // a prefix is not the name
+	testing.expect(t, !object_drawn(&m, true, "beams")) // nor a longer one
+	testing.expect(t, !object_drawn(&m, false, "moth")) // her own eyes
+
+	s, ok := parse_scene("scene s\nobj mouse pos=1,1 seen=host glance=moth,beam\n", nil)
+	testing.expect(t, ok)
+	defer {free_scene_strings(&s); delete(s.objects); delete(s.exits); delete(s.triggers); delete(s.walk_area); delete(s.scenery)}
+	testing.expect_value(t, len(s.objects), 1)
+	testing.expect_value(t, s.objects[0].host_looks, "moth,beam")
+	testing.expect(t, s.objects[0].host_only)
+	text := scene_text(&s)
+	testing.expect_value(t, strings.count(text, " glance=moth,beam"), 1)
+}
+
+@(test)
 a_thing_only_a_host_sees :: proc(t: ^testing.T) {
 	w := cat_house()
 	defer done(&w)

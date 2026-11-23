@@ -1,7 +1,47 @@
 package nengine
 
 import "core:strings"
+import "core:fmt"
 import "core:testing"
+
+@(private = "file")
+GLANCE_CHECK_LOOKS := [?]Glance{{look = "beam", room = "loft"}, {look = "floor"}}
+
+@(private = "file")
+GLANCE_CHECK_ROAM := [?]Glance{{look = "sky"}} // a host of no room goes where she is: this may look at any room
+
+@(private = "file")
+GLANCE_CHECK_HOSTS := [?]Host {
+	{name = "cat", room = "hall", attention = GLANCE_CHECK_LOOKS[:]},
+	{name = "owl", anywhere = true, attention = GLANCE_CHECK_ROAM[:]},
+}
+
+@(test)
+a_glance_list_that_cannot_be_drawn_is_a_fault :: proc(t: ^testing.T) {
+	w: World
+	w.hosts = GLANCE_CHECK_HOSTS[:]
+	loft := Scene{name = "loft"}
+	append(&loft.objects, Object{name = "ok", host_only = true, host_looks = "beam"})
+	append(&loft.objects, Object{name = "typo", host_only = true, host_looks = "bean"})
+	append(&loft.objects, Object{name = "open", host_looks = "beam"})            // no seen=host
+	append(&loft.objects, Object{name = "elsewhere", host_only = true, host_looks = "floor"}) // floor is the hall's
+	append(&loft.objects, Object{name = "cloud", host_only = true, host_looks = "sky"})       // the roamer's, in any room
+	hall := Scene{name = "hall"}
+	append(&hall.objects, Object{name = "rug", host_only = true, host_looks = "floor"})
+	append(&w.scenes, loft, hall)
+	defer {for &s in w.scenes do delete(s.objects); delete(w.scenes)}
+
+	faults := host_glance_faults(&w)
+	ways := make([dynamic]string, context.temp_allocator)
+	for f in faults do append(&ways, fmt.tprintf("%v %v", f.room, f.way))
+	testing.expect_value(t, len(faults), 3)
+	expected := [?]string{"loft obj typo", "loft obj open", "loft obj elsewhere"}
+	for e in expected {
+		found := false
+		for got in ways do if got == e do found = true
+		testing.expectf(t, found, "no fault for %v (%v)", e, ways)
+	}
+}
 
 // world_check.odin, on side_test's square: four floors 400 wide, the band y
 // 100 to 200, gate g1 between ne and se (shut at night).

@@ -159,7 +159,10 @@ ride :: proc(w: ^World, name: string) -> Ride_Outcome {
 		body_room = w.current,
 		body_pos  = p.pos,
 	}
-	g := h.attention[next_glance(w, h, -1)]
+	// The first glance, its camera and its name: the view going under shows
+	// it (host_view_look), and the end of the handover begins it.
+	w.ride.glance = next_glance(w, h, -1)
+	g := h.attention[w.ride.glance]
 	w.ride.cam, w.ride.cam_room = g.at, glance_room(w, g)
 	return .Started
 }
@@ -535,14 +538,44 @@ draw_host_view :: proc(w: ^World, h: ^Host) {
 		rotation = h.camera.tilt + math.sin(w.time * 0.7) * h.camera.sway * 0.1,
 		zoom     = zoom,
 	}
-	drawing_host_view = true // `seen=host` things: here, and only here
+	host_view_begin(w, h) // `seen=host` things: here (and in `!ride`'s list), and only here
 	draw_room_through(w, sc, r.cam_room == r.body_room, cam, ride_view_tex)
-	drawing_host_view = false
+	host_view_end()
 }
 
-// True only while draw_host_view draws: see object_drawn (scene.odin).
+// Round a host's view: what object_drawn asks while it is drawn (scene.odin,
+// room_items). draw_host_view and the harness's `!ride` are the only callers,
+// so her own eyes, the handover's own room, peeps and probes never see a
+// `seen=host` thing.
+host_view_begin :: proc(w: ^World, h: ^Host) {
+	drawing_host_view = true
+	drawing_look = host_view_look(w, h)
+}
+
+host_view_end :: proc() {
+	drawing_host_view, drawing_look = false, ""
+}
+
+// The glance the host's view shows: going under, the first one (`ride`
+// stores it with the camera it looks through); riding, the current one;
+// coming back, the last one, as it fades.
 @(private)
+host_view_look :: proc(w: ^World, h: ^Host) -> string {
+	i := w.ride.glance
+	if i < 0 || i >= len(h.attention) do return ""
+	return h.attention[i].look
+}
+
+// True only while draw_host_view draws: see object_drawn (scene.odin). One to a
+// thread, as `drawing_look` is: the game draws on one, and the tests, which run
+// many at once, each open and shut a view of their own (host_view_begin).
+@(private)
+@(thread_local)
 drawing_host_view: bool
+// The `look` of the glance draw_host_view is drawing, for `glance=`.
+@(private)
+@(thread_local)
+drawing_look: string
 
 // A room seen through a camera that tilts and zooms, into `into`. Each sprite
 // is drawn through it the way the blown-up pictures were (sprite_camera), so

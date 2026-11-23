@@ -184,6 +184,8 @@ parse_scene :: proc(text: string, assets: ^Assets) -> (s: Scene, ok: bool) {
 			}
 			// `seen=host`: drawn only in a ridden host's view (ride.odin).
 			o.host_only = field_or_text(l, "seen", "") == "host"
+			// `glance=a,b`: of a host's glances, only these (scene.odin, object_drawn).
+			o.host_looks = clone_field(l, "glance")
 			// Coming and going through a side: `enters=south leaves=east`.
 			if v, has := field(l, "enters"); has {
 				if d, good := compass_of(v); good do o.enters = d
@@ -512,6 +514,7 @@ scene_text :: proc(s: ^Scene, allocator := context.temp_allocator) -> string {
 		if o.show do strings.write_string(&b, " show=true")
 		if o.whole do strings.write_string(&b, " whole=true")
 		if o.host_only do strings.write_string(&b, " seen=host")
+		if o.host_looks != "" do fmt.sbprintf(&b, " glance=%v", o.host_looks)
 		if o.depth != .Normal do fmt.sbprintf(&b, " depth=%v", depth_text(o.depth))
 		if d, has := o.enters.?; has do fmt.sbprintf(&b, " enters=%v", COMPASS_WORDS[d])
 		if d, has := o.leaves.?; has do fmt.sbprintf(&b, " leaves=%v", COMPASS_WORDS[d])
@@ -721,6 +724,7 @@ free_scene_strings :: proc(s: ^Scene) {
 		delete(o.loop_name)
 		delete(o.tick_name)
 		delete(o.only)
+		delete(o.host_looks)
 		delete(o.char_name)
 		delete(o.rest_pose)
 		delete(o.rest_walk)

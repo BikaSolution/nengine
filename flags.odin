@@ -134,6 +134,16 @@ condition_met :: proc(w: ^World, cond: string) -> bool {
 	return all_met(w, cond)
 }
 
+// `name` is one of the comma-separated names in `list` (`glance=` on a
+// `seen=host` object). "" is in no list.
+@(private)
+name_in_list :: proc(list, name: string) -> bool {
+	if name == "" do return false
+	rest := list
+	for term in strings.split_iterator(&rest, ",") do if strings.trim_space(term) == name do return true
+	return false
+}
+
 // Every comma-separated term of `cond` holds: a name is on, `!name` is off.
 @(private = "file")
 all_met :: proc(w: ^World, cond: string) -> bool {

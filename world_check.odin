@@ -1,6 +1,7 @@
 package nengine
 
 import "core:fmt"
+import "core:strings"
 
 // Checking a world of sides as it stands now: where she can walk to, and
 // whether every way across is a way back. For a game's own tests, at the
@@ -190,6 +191,46 @@ world_faults :: proc(w: ^World, allocator := context.temp_allocator) -> [dynamic
 	append(&out, ..gate_faults(w, context.temp_allocator)[:])
 	append(&out, ..exit_faults(w, context.temp_allocator)[:])
 	return out
+}
+
+// A `glance=` that can never be drawn as meant: on a thing without
+// `seen=host` (it is ignored there, and the thing is drawn to everybody at
+// its hours), or naming a glance that no host looks at this room with. A
+// glance can look at a room by its `room`, or, with none, at the room its host
+// is pinned to (`Host.room`), or anywhere if neither says. Names match a
+// glance's `look` in any host: two animals may share a glance's name.
+host_glance_faults :: proc(w: ^World, allocator := context.temp_allocator) -> [dynamic]World_Fault {
+	out := make([dynamic]World_Fault, allocator)
+	for &sc in w.scenes {
+		for &o in sc.objects {
+			if o.host_looks == "" do continue
+			way := fmt.tprintf("obj %v", o.name)
+			if !o.host_only {
+				append(&out, World_Fault{sc.name, way, fmt.tprintf("glance=%v without seen=host: drawn to everybody", o.host_looks)})
+				continue
+			}
+			rest := o.host_looks
+			for term in strings.split_iterator(&rest, ",") {
+				name := strings.trim_space(term)
+				if name == "" do continue
+				if !glance_looks_at(w, sc.name, name) {
+					append(&out, World_Fault{sc.name, way, fmt.tprintf("glance=%v: no glance by that name looks at %v", name, sc.name)})
+				}
+			}
+		}
+	}
+	return out
+}
+
+@(private = "file")
+glance_looks_at :: proc(w: ^World, room, look: string) -> bool {
+	for &h in w.hosts {
+		for g in h.attention {
+			if g.look != look do continue
+			if g.room == room || (g.room == "" && (h.room == room || h.room == "")) do return true
+		}
+	}
+	return false
 }
 
 // Does the room exit `e` (in room `from`) leads to have an exit back to

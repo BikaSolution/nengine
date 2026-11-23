@@ -225,6 +225,10 @@ Object :: struct {
 	// `host_sees` is `only`, for the host's view to draw it by.
 	host_only:   bool,
 	host_sees:   bool,
+	// `glance=hands,dress` with `seen=host`: drawn only while the host is
+	// looking at one of those glances (a Glance's `look`), so a figure the
+	// words give in one glance is not there in the next. Empty: every glance.
+	host_looks:  string,
 
 	// A person coming and going through a side (side.odin): `enters=` and
 	// `leaves=` from the file. `going`: walking off, and already gone as far
@@ -516,10 +520,72 @@ draw_drift :: proc(d: Drift, light: Light, tint: Palette_Map, plain: bool, time:
 // through a side; and a `seen=host` thing only when a host's view is drawn
 // (`drawing_host_view`, set by ride.odin's draw_host_view and nowhere else:
 // her own eyes, the handover going under and coming back, peeps and probes
-// all draw with it false).
-object_drawn :: proc(o: ^Object, host_view: bool) -> bool {
-	if o.host_only do return host_view && o.host_sees
+// all draw with it false), and, if it names glances, only while the host
+// looks at one of them (`look`, the glance's name; "" is none).
+object_drawn :: proc(o: ^Object, host_view: bool, look := "") -> bool {
+	if o.host_only do return host_view && o.host_sees && (o.host_looks == "" || name_in_list(o.host_looks, look))
 	return !o.hidden || o.going
+}
+
+// What a room's drawing holds, back to front: the objects drawn now (`object_drawn`, so a
+// host's view takes its `seen=host` things at the glance it is on: host_view_begin), her,
+// whoever is called into sight, a cut's extras, the passer outside. No GPU: draw_room draws
+// it, and the harness reads it (`!ride`'s `host sees`), so both ask one rule.
+Room_Item :: struct {
+	depth: Depth,
+	y:     f32,
+	i:     int,
+	obj:   int,  // -1 = the player; -2 and below, a cutscene's extras; PASSER_ITEM, somebody outside
+	pre:   bool, // drawn just before the item it ties with: the passer, under its window's frame
+}
+
+room_items :: proc(w: ^World, scene: ^Scene, player: bool) -> (items: [dynamic]Room_Item, passer_at: int) {
+	// Painter's algorithm: whoever's feet are lower on screen is nearer the
+	// camera, so sort by feet and draw back to front. That is what lets
+	// anybody walk behind the table and then in front of it, and it follows a
+	// walking person for free because their feet are their position.
+	//
+	// Three things decide the order, in this order:
+	//
+	//   depth  a rug is always behind, a foreground bush always in front
+	//   feet   pos.y, shifted by `base` for art that doesn't meet the floor
+	//          at the bottom of its sprite
+	//   index  so that two things standing on the same line keep whatever
+	//          order the scene file gave them, every frame. Without it the
+	//          sort is free to swap them and they flicker.
+	items = make([dynamic]Room_Item, 0, len(scene.objects) + 2, context.temp_allocator)
+	for &o, i in scene.objects {
+		// A thing with depth of its own goes at its farthest line (priority.odin).
+		y := own_depth_line(&o) if o.own_depth != nil else o.pos.y + o.base
+		// Somebody walking off through a side is gone, but still drawn.
+		if object_drawn(&o, drawing_host_view, drawing_look) do append(&items, Room_Item{o.depth, y, i, i, false})
+	}
+	if player do append(&items, Room_Item{.Normal, w.player.pos.y, len(scene.objects), -1, false})
+	// Whoever has been called into sight to speak to her (sight.odin).
+	if player && scene == current_scene(w) {
+		for c, i in w.sight.called do append(&items, Room_Item{.Normal, c.actor.pos.y, len(scene.objects) + 1000 + i, SIGHT_ITEM + i, false})
+	}
+	// Whoever a cutscene playing here has brought on. See cutscene.odin.
+	if cutting(w) && w.cut.scene >= 0 && w.cut.scene < len(w.scenes) && scene == &w.scenes[w.cut.scene] {
+		for role, i in w.cut.roles {
+			if role == .Extra do append(&items, Room_Item{.Normal, w.cut.actors[i].pos.y, len(scene.objects) + 1 + i, -2 - i, false})
+		}
+	}
+	// Somebody going past outside, if they are (passer.odin): just under the
+	// window's frame, so the frame, the room and its people are over them.
+	passing: bool
+	passing, passer_at = passer_shown(w, scene)
+	if passing {
+		key := passer_key(scene, &scene.windows[passer_at])
+		append(&items, Room_Item{key.depth, key.y, key.i, PASSER_ITEM, true})
+	}
+	slice.sort_by(items[:], proc(a, b: Room_Item) -> bool {
+		if a.depth != b.depth do return a.depth < b.depth
+		if a.y != b.y do return a.y < b.y
+		if a.i != b.i do return a.i < b.i
+		return a.pre && !b.pre
+	})
+	return
 }
 
 @(private)
@@ -541,57 +607,7 @@ draw_room :: proc(w: ^World, scene: ^Scene, player: bool) {
 	for d in scene.drifts do draw_drift(d, light, tint, plain, w.time)
 	if w.debug && scene == current_scene(w) do draw_debug_floor(scene) // under the sprites, so they keep their colours
 
-// Painter's algorithm: whoever's feet are lower on screen is nearer the
-	// camera, so sort by feet and draw back to front. That is what lets
-	// anybody walk behind the table and then in front of it, and it follows a
-	// walking person for free because their feet are their position.
-	//
-	// Three things decide the order, in this order:
-	//
-	//   depth  a rug is always behind, a foreground bush always in front
-	//   feet   pos.y, shifted by `base` for art that doesn't meet the floor
-	//          at the bottom of its sprite
-	//   index  so that two things standing on the same line keep whatever
-	//          order the scene file gave them, every frame. Without it the
-	//          sort is free to swap them and they flicker.
-	Item :: struct {
-		depth: Depth,
-		y:     f32,
-		i:     int,
-		obj:   int,  // -1 = the player; -2 and below, a cutscene's extras; PASSER_ITEM, somebody outside
-		pre:   bool, // drawn just before the item it ties with: the passer, under its window's frame
-	}
-	items := make([dynamic]Item, 0, len(scene.objects) + 2, context.temp_allocator)
-	for &o, i in scene.objects {
-		// A thing with depth of its own goes at its farthest line (priority.odin).
-		y := own_depth_line(&o) if o.own_depth != nil else o.pos.y + o.base
-		// Somebody walking off through a side is gone, but still drawn.
-		if object_drawn(&o, drawing_host_view) do append(&items, Item{o.depth, y, i, i, false})
-	}
-	if player do append(&items, Item{.Normal, w.player.pos.y, len(scene.objects), -1, false})
-	// Whoever has been called into sight to speak to her (sight.odin).
-	if player && scene == current_scene(w) {
-		for c, i in w.sight.called do append(&items, Item{.Normal, c.actor.pos.y, len(scene.objects) + 1000 + i, SIGHT_ITEM + i, false})
-	}
-	// Whoever a cutscene playing here has brought on. See cutscene.odin.
-	if cutting(w) && w.cut.scene >= 0 && w.cut.scene < len(w.scenes) && scene == &w.scenes[w.cut.scene] {
-		for role, i in w.cut.roles {
-			if role == .Extra do append(&items, Item{.Normal, w.cut.actors[i].pos.y, len(scene.objects) + 1 + i, -2 - i, false})
-		}
-	}
-	// Somebody going past outside, if they are (passer.odin): just under the
-	// window's frame, so the frame, the room and its people are over them.
-	passing, passer_at := passer_shown(w, scene)
-	if passing {
-		key := passer_key(scene, &scene.windows[passer_at])
-		append(&items, Item{key.depth, key.y, key.i, PASSER_ITEM, true})
-	}
-	slice.sort_by(items[:], proc(a, b: Item) -> bool {
-		if a.depth != b.depth do return a.depth < b.depth
-		if a.y != b.y do return a.y < b.y
-		if a.i != b.i do return a.i < b.i
-		return a.pre && !b.pre
-	})
+	items, passer_at := room_items(w, scene, player)
 
 	// The room's depth (priority.odin): each person, and each thing at
 	// depth=normal, is hidden behind every pixel of it nearer than their feet.
